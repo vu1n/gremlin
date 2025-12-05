@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping Cart - Gremlin Demo Shop</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Recording Controls -->
+  <div id="recorder-controls" class="recorder-controls">
+    <div class="recorder-status">
+      <span class="status-indicator" id="status-indicator"></span>
+      <span id="status-text">Not Recording</span>
+      <span class="event-count" id="event-count">0 events</span>
+    </div>
+    <div class="recorder-buttons">
+      <button id="start-recording" data-testid="recorder-start-btn" class="btn btn-primary">
+        Start Recording
+      </button>
+      <button id="stop-recording" data-testid="recorder-stop-btn" class="btn btn-secondary" disabled>
+        Stop Recording
+      </button>
+      <button id="export-session" data-testid="recorder-export-btn" class="btn btn-accent" disabled>
+        Export JSON
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo" data-testid="nav-logo">
+        🧪 Gremlin Demo Shop
+      </a>
+      <ul class="nav-menu">
+        <li><a href="/" data-testid="nav-home">Home</a></li>
+        <li><a href="/products.html" data-testid="nav-products">Products</a></li>
+        <li>
+          <a href="/cart.html" data-testid="nav-cart" class="cart-link active">
+            Cart <span class="cart-badge" id="cart-badge" data-testid="cart-badge">0</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Cart Page -->
+  <main class="container">
+    <header class="page-header">
+      <h1>Shopping Cart</h1>
+    </header>
+
+    <div class="cart-layout">
+      <!-- Cart Items -->
+      <div class="cart-items">
+        <div id="cart-items-container" data-testid="cart-items-container">
+          <!-- Cart items will be rendered dynamically -->
+        </div>
+        <div id="empty-cart" class="empty-state" style="display: none;" data-testid="empty-cart-message">
+          <p>Your cart is empty</p>
+          <a href="/products.html" data-testid="empty-cart-continue-btn" class="btn btn-primary">
+            Continue Shopping
+          </a>
+        </div>
+      </div>
+
+      <!-- Cart Summary -->
+      <aside class="cart-summary">
+        <h2>Order Summary</h2>
+        <div class="summary-row">
+          <span>Subtotal:</span>
+          <span id="subtotal" data-testid="cart-subtotal">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Shipping:</span>
+          <span id="shipping" data-testid="cart-shipping">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Tax:</span>
+          <span id="tax" data-testid="cart-tax">$0.00</span>
+        </div>
+        <hr>
+        <div class="summary-row summary-total">
+          <strong>Total:</strong>
+          <strong id="total" data-testid="cart-total">$0.00</strong>
+        </div>
+        <button id="checkout-btn" data-testid="cart-checkout-btn" class="btn btn-primary btn-block">
+          Proceed to Checkout
+        </button>
+        <a href="/products.html" data-testid="cart-continue-shopping-btn" class="btn btn-outline btn-block">
+          Continue Shopping
+        </a>
+      </aside>
+    </div>
+
+    <!-- Promo Code -->
+    <div class="promo-code">
+      <h3>Have a promo code?</h3>
+      <div class="promo-input-group">
+        <input
+          type="text"
+          id="promo-code"
+          data-testid="promo-code-input"
+          placeholder="Enter promo code"
+        >
+        <button data-testid="promo-apply-btn" class="btn btn-secondary">
+          Apply
+        </button>
+      </div>
+      <div id="promo-message" class="promo-message" data-testid="promo-message"></div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>Gremlin Session Recorder Demo &middot; Built with @gremlin/recorder-web</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/recorder.js"></script>
+</body>
+</html>

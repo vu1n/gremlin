@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package gremlin;
+
+import "elements.proto";
+import "events.proto";
+
+/**
+ * A recorded user session.
+ */
+message GremlinSession {
+  // Session header (metadata, sent once)
+  SessionHeader header = 1;
+
+  // Element dictionary for deduplication
+  repeated ElementInfo elements = 2;
+
+  // Recorded events (delta-encoded)
+  repeated GremlinEvent events = 3;
+
+  // Captured screenshots
+  repeated Screenshot screenshots = 4;
+}
+
+/**
+ * Session header (metadata)
+ */
+message SessionHeader {
+  // Unique session ID
+  string session_id = 1;
+
+  // Session start time (Unix ms)
+  uint64 start_time = 2;
+
+  // Session end time (Unix ms)
+  optional uint64 end_time = 3;
+
+  // Device information
+  DeviceInfo device = 4;
+
+  // App information
+  AppInfo app = 5;
+
+  // Schema version for migrations
+  uint32 schema_version = 6;
+}
+
+/**
+ * Device information
+ */
+message DeviceInfo {
+  // Platform
+  Platform platform = 1;
+
+  // OS version
+  string os_version = 2;
+
+  // Device model (e.g., "iPhone 15", "Pixel 8")
+  optional string model = 3;
+
+  // Screen dimensions
+  ScreenInfo screen = 4;
+
+  // User agent (web)
+  optional string user_agent = 5;
+
+  // Locale
+  optional string locale = 6;
+}
+
+enum Platform {
+  PLATFORM_WEB = 0;
+  PLATFORM_IOS = 1;
+  PLATFORM_ANDROID = 2;
+}
+
+message ScreenInfo {
+  uint32 width = 1;
+  uint32 height = 2;
+  float pixel_ratio = 3;
+}
+
+/**
+ * App information
+ */
+message AppInfo {
+  // App name
+  string name = 1;
+
+  // App version
+  string version = 2;
+
+  // Build number
+  optional string build = 3;
+
+  // Bundle ID (mobile) or origin (web)
+  string identifier = 4;
+}
+
+/**
+ * Screenshot data
+ */
+message Screenshot {
+  // Unique ID
+  string id = 1;
+
+  // Capture timestamp (Unix ms)
+  uint64 timestamp = 2;
+
+  // Image format
+  ImageFormat format = 3;
+
+  // Image data (base64 or URL)
+  string data = 4;
+
+  // Whether data is a URL or inline base64
+  bool is_url = 5;
+
+  // Image dimensions
+  uint32 width = 6;
+  uint32 height = 7;
+
+  // Quality (0-100)
+  uint32 quality = 8;
+
+  // Whether this is a diff from previous screenshot
+  bool is_diff = 9;
+
+  // Previous screenshot ID if this is a diff
+  optional string diff_from_id = 10;
+}
+
+enum ImageFormat {
+  IMAGE_FORMAT_WEBP = 0;
+  IMAGE_FORMAT_JPEG = 1;
+  IMAGE_FORMAT_PNG = 2;
+}

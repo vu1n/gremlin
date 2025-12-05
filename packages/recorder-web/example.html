@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gremlin Recorder Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            background: #f5f5f5;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .status {
+            padding: 10px 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status.recording {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status.stopped {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            background: #1976D2;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .output {
+            background: #263238;
+            color: #aed581;
+            padding: 20px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2196F3;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦎 Gremlin Web Recorder Demo</h1>
+
+    <div id="status" class="status stopped">
+        Status: Not Recording
+    </div>
+
+    <div class="container">
+        <h2>Recording Controls</h2>
+        <button id="startBtn" data-testid="start-recording">Start Recording</button>
+        <button id="stopBtn" data-testid="stop-recording" disabled>Stop Recording</button>
+        <button id="clearBtn" data-testid="clear-output">Clear Output</button>
+    </div>
+
+    <div class="container">
+        <h2>Interactive Demo Form</h2>
+        <p>Interact with this form while recording to see captured events!</p>
+
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input
+                type="text"
+                id="username"
+                data-testid="username-input"
+                placeholder="Enter your username"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input
+                type="email"
+                id="email"
+                data-testid="email-input"
+                placeholder="your@email.com"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input
+                type="password"
+                id="password"
+                data-testid="password-input"
+                placeholder="Enter password (will be masked)"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="country">Country</label>
+            <select id="country" data-testid="country-select">
+                <option value="">Select a country</option>
+                <option value="us">United States</option>
+                <option value="uk">United Kingdom</option>
+                <option value="ca">Canada</option>
+                <option value="au">Australia</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="message">Message</label>
+            <textarea
+                id="message"
+                data-testid="message-textarea"
+                placeholder="Enter your message here..."
+            ></textarea>
+        </div>
+
+        <button data-testid="submit-form" onclick="handleSubmit(event)">
+            Submit Form
+        </button>
+    </div>
+
+    <div class="container">
+        <h2>Session Stats</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="eventCount">0</div>
+                <div class="stat-label">Events Captured</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="elementCount">0</div>
+                <div class="stat-label">Elements Identified</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="duration">0s</div>
+                <div class="stat-label">Recording Duration</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Session Output</h2>
+        <div class="output" id="output">No session recorded yet. Click "Start Recording" to begin.</div>
+    </div>
+
+    <script type="module">
+        // This is a demo - in production you'd import from your bundled package
+        // import { GremlinRecorder } from '@gremlin/recorder-web';
+
+        // For demo purposes, we'll simulate the recorder
+        console.log('Gremlin Recorder Demo - Ready!');
+        console.log('In production, import the actual GremlinRecorder from @gremlin/recorder-web');
+
+        // Simulated recorder for demo
+        let recorder = null;
+        let startTime = null;
+        let durationInterval = null;
+
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const outputEl = document.getElementById('output');
+        const eventCountEl = document.getElementById('eventCount');
+        const elementCountEl = document.getElementById('elementCount');
+        const durationEl = document.getElementById('duration');
+
+        startBtn.addEventListener('click', () => {
+            console.log('Starting recording...');
+
+            // In production:
+            // recorder = new GremlinRecorder({
+            //   appName: 'DemoApp',
+            //   appVersion: '1.0.0',
+            //   onEvent: (event) => {
+            //     console.log('Event captured:', event);
+            //     updateStats();
+            //   }
+            // });
+            // recorder.start();
+
+            startTime = Date.now();
+            statusEl.className = 'status recording';
+            statusEl.textContent = '● Recording in progress...';
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            outputEl.textContent = 'Recording started... Interact with the form above to generate events.';
+
+            // Update duration counter
+            durationInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                durationEl.textContent = elapsed + 's';
+            }, 1000);
+        });
+
+        stopBtn.addEventListener('click', () => {
+            console.log('Stopping recording...');
+
+            // In production:
+            // const session = recorder.stop();
+            // outputEl.textContent = JSON.stringify(session, null, 2);
+
+            clearInterval(durationInterval);
+
+            statusEl.className = 'status stopped';
+            statusEl.textContent = '✓ Recording stopped';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            // Simulated session output
+            const simulatedSession = {
+                header: {
+                    sessionId: `${Date.now()}-demo`,
+                    startTime: startTime,
+                    endTime: Date.now(),
+                    device: {
+                        platform: 'web',
+                        osVersion: navigator.platform,
+                        screen: {
+                            width: window.screen.width,
+                            height: window.screen.height,
+                            pixelRatio: window.devicePixelRatio
+                        },
+                        userAgent: navigator.userAgent,
+                        locale: navigator.language
+                    },
+                    app: {
+                        name: 'DemoApp',
+                        version: '1.0.0',
+                        identifier: window.location.origin
+                    },
+                    schemaVersion: 1
+                },
+                elements: [
+                    {
+                        testId: 'start-recording',
+                        text: 'Start Recording',
+                        type: 'button',
+                        cssSelector: 'button#startBtn'
+                    }
+                ],
+                events: [
+                    {
+                        dt: 0,
+                        type: 0,
+                        data: {
+                            kind: 'tap',
+                            x: 100,
+                            y: 200,
+                            elementIndex: 0
+                        }
+                    }
+                ],
+                screenshots: []
+            };
+
+            outputEl.textContent = JSON.stringify(simulatedSession, null, 2);
+
+            // Simulated stats
+            eventCountEl.textContent = '5';
+            elementCountEl.textContent = '3';
+        });
+
+        clearBtn.addEventListener('click', () => {
+            outputEl.textContent = 'Output cleared. Start a new recording to see events.';
+            eventCountEl.textContent = '0';
+            elementCountEl.textContent = '0';
+            durationEl.textContent = '0s';
+        });
+
+        window.handleSubmit = (event) => {
+            event.preventDefault();
+            alert('Form submitted! (This is a demo - form not actually submitted)');
+        };
+
+        // Production usage example:
+        console.log(`
+Production Usage:
+
+import { GremlinRecorder } from '@gremlin/recorder-web';
+
+const recorder = new GremlinRecorder({
+  appName: 'MyApp',
+  appVersion: '1.0.0',
+  autoStart: true,
+  capturePerformance: true,
+  maskInputs: true,
+  onEvent: (event) => {
+    // Send to backend
+    fetch('/api/gremlin/events', {
+      method: 'POST',
+      body: JSON.stringify(event)
+    });
+  }
+});
+
+// Or manually control:
+recorder.start();
+// ... user interacts ...
+const session = recorder.stop();
+console.log(session);
+        `);
+    </script>
+</body>
+</html>

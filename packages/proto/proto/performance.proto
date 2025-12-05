@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package gremlin;
+
+/**
+ * Performance metrics sample
+ */
+message PerformanceSample {
+  // Frames per second
+  optional float fps = 1;
+
+  // JS thread blocked time (ms)
+  optional float js_thread_lag = 2;
+
+  // Memory usage (MB)
+  optional float memory_usage = 3;
+
+  // Time since last navigation (ms)
+  optional uint32 time_since_navigation = 4;
+}

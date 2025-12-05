@@ -1,0 +1,255 @@
+syntax = "proto3";
+
+package gremlin;
+
+import "performance.proto";
+
+/**
+ * A recorded event with delta-encoded timestamp.
+ */
+message GremlinEvent {
+  // Delta time from previous event (ms)
+  uint32 dt = 1;
+
+  // Event type enum for compact encoding
+  EventTypeEnum type = 2;
+
+  // Event-specific data (oneof for discriminated union)
+  oneof data {
+    TapEvent tap = 3;
+    SwipeEvent swipe = 4;
+    ScrollEvent scroll = 5;
+    InputEvent input = 6;
+    NavigationEvent navigation = 7;
+    NetworkEvent network = 8;
+    ScreenCaptureEvent screen_capture = 9;
+    ErrorEvent error = 10;
+    AppStateEvent app_state = 11;
+  }
+
+  // Performance sample at event time
+  optional PerformanceSample perf = 12;
+}
+
+/**
+ * Event type enum (matches TypeScript EventTypeEnum)
+ */
+enum EventTypeEnum {
+  EVENT_TYPE_TAP = 0;
+  EVENT_TYPE_DOUBLE_TAP = 1;
+  EVENT_TYPE_LONG_PRESS = 2;
+  EVENT_TYPE_SWIPE = 3;
+  EVENT_TYPE_SCROLL = 4;
+  EVENT_TYPE_INPUT = 5;
+  EVENT_TYPE_NAVIGATION = 6;
+  EVENT_TYPE_NETWORK = 7;
+  EVENT_TYPE_SCREEN_CAPTURE = 8;
+  EVENT_TYPE_ERROR = 9;
+  EVENT_TYPE_APP_STATE = 10;
+}
+
+// ============================================================================
+// Event Data Types
+// ============================================================================
+
+/**
+ * Tap event (covers tap, double_tap, long_press)
+ */
+message TapEvent {
+  // Tap kind
+  TapKind kind = 1;
+
+  // Coordinates
+  float x = 2;
+  float y = 3;
+
+  // Element index in dictionary (if identified)
+  optional uint32 element_index = 4;
+}
+
+enum TapKind {
+  TAP_KIND_TAP = 0;
+  TAP_KIND_DOUBLE_TAP = 1;
+  TAP_KIND_LONG_PRESS = 2;
+}
+
+/**
+ * Swipe event
+ */
+message SwipeEvent {
+  // Start coordinates
+  float start_x = 1;
+  float start_y = 2;
+
+  // End coordinates
+  float end_x = 3;
+  float end_y = 4;
+
+  // Duration of swipe (ms)
+  uint32 duration = 5;
+
+  // Direction
+  SwipeDirection direction = 6;
+}
+
+enum SwipeDirection {
+  SWIPE_DIRECTION_UP = 0;
+  SWIPE_DIRECTION_DOWN = 1;
+  SWIPE_DIRECTION_LEFT = 2;
+  SWIPE_DIRECTION_RIGHT = 3;
+}
+
+/**
+ * Scroll event
+ */
+message ScrollEvent {
+  // Scroll position delta
+  float delta_x = 1;
+  float delta_y = 2;
+
+  // Container element index
+  optional uint32 container_index = 3;
+
+  // Number of raw scroll events coalesced into this one
+  optional uint32 coalesced = 4;
+}
+
+/**
+ * Input event
+ */
+message InputEvent {
+  // Element index
+  optional uint32 element_index = 1;
+
+  // Input value (may be masked for PII)
+  string value = 2;
+
+  // Whether value was masked
+  bool masked = 3;
+
+  // Input type
+  optional InputType input_type = 4;
+}
+
+enum InputType {
+  INPUT_TYPE_TEXT = 0;
+  INPUT_TYPE_PASSWORD = 1;
+  INPUT_TYPE_EMAIL = 2;
+  INPUT_TYPE_NUMBER = 3;
+  INPUT_TYPE_PHONE = 4;
+}
+
+/**
+ * Navigation event
+ */
+message NavigationEvent {
+  // Navigation type
+  NavigationType nav_type = 1;
+
+  // Screen/route name
+  string screen = 2;
+
+  // Route parameters (may be masked)
+  // Stored as JSON string for flexibility
+  optional string params_json = 3;
+
+  // URL (web)
+  optional string url = 4;
+}
+
+enum NavigationType {
+  NAVIGATION_TYPE_PUSH = 0;
+  NAVIGATION_TYPE_POP = 1;
+  NAVIGATION_TYPE_REPLACE = 2;
+  NAVIGATION_TYPE_RESET = 3;
+  NAVIGATION_TYPE_TAB = 4;
+  NAVIGATION_TYPE_MODAL = 5;
+}
+
+/**
+ * Network event
+ */
+message NetworkEvent {
+  // Request ID for correlation
+  string request_id = 1;
+
+  // HTTP method
+  string method = 2;
+
+  // URL (may be truncated)
+  string url = 3;
+
+  // Response status
+  optional uint32 status = 4;
+
+  // Duration (ms)
+  optional uint32 duration = 5;
+
+  // Request phase
+  NetworkPhase phase = 6;
+
+  // Error message if failed
+  optional string error = 7;
+}
+
+enum NetworkPhase {
+  NETWORK_PHASE_START = 0;
+  NETWORK_PHASE_END = 1;
+  NETWORK_PHASE_ERROR = 2;
+}
+
+/**
+ * Screen capture event
+ */
+message ScreenCaptureEvent {
+  // Screenshot index
+  uint32 screenshot_index = 1;
+
+  // Trigger reason
+  CaptureTrigger trigger = 2;
+}
+
+enum CaptureTrigger {
+  CAPTURE_TRIGGER_NAVIGATION = 0;
+  CAPTURE_TRIGGER_INTERVAL = 1;
+  CAPTURE_TRIGGER_ERROR = 2;
+  CAPTURE_TRIGGER_MANUAL = 3;
+}
+
+/**
+ * Error event
+ */
+message ErrorEvent {
+  // Error message
+  string message = 1;
+
+  // Error stack trace
+  optional string stack = 2;
+
+  // Error type
+  ErrorType error_type = 3;
+
+  // Whether fatal
+  bool fatal = 4;
+}
+
+enum ErrorType {
+  ERROR_TYPE_JS = 0;
+  ERROR_TYPE_NATIVE = 1;
+  ERROR_TYPE_NETWORK = 2;
+  ERROR_TYPE_RENDER = 3;
+}
+
+/**
+ * App state event
+ */
+message AppStateEvent {
+  // New state
+  AppState state = 1;
+}
+
+enum AppState {
+  APP_STATE_ACTIVE = 0;
+  APP_STATE_BACKGROUND = 1;
+  APP_STATE_INACTIVE = 2;
+}

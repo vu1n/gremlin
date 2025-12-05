@@ -1,0 +1,18 @@
+{
+  "name": "@gremlin/web-app-example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "E-commerce demo app showcasing @gremlin/recorder-web SDK",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@gremlin/recorder-web": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}

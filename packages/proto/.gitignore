@@ -1,0 +1,14 @@
+# Generated files
+src/generated/
+dist/
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+*.tsbuildinfo
+
+# IDE
+.DS_Store
+.vscode/
+.idea/

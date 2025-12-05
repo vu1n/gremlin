@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Products - Gremlin Demo Shop</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Recording Controls -->
+  <div id="recorder-controls" class="recorder-controls">
+    <div class="recorder-status">
+      <span class="status-indicator" id="status-indicator"></span>
+      <span id="status-text">Not Recording</span>
+      <span class="event-count" id="event-count">0 events</span>
+    </div>
+    <div class="recorder-buttons">
+      <button id="start-recording" data-testid="recorder-start-btn" class="btn btn-primary">
+        Start Recording
+      </button>
+      <button id="stop-recording" data-testid="recorder-stop-btn" class="btn btn-secondary" disabled>
+        Stop Recording
+      </button>
+      <button id="export-session" data-testid="recorder-export-btn" class="btn btn-accent" disabled>
+        Export JSON
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo" data-testid="nav-logo">
+        🧪 Gremlin Demo Shop
+      </a>
+      <ul class="nav-menu">
+        <li><a href="/" data-testid="nav-home">Home</a></li>
+        <li><a href="/products.html" data-testid="nav-products" class="active">Products</a></li>
+        <li>
+          <a href="/cart.html" data-testid="nav-cart" class="cart-link">
+            Cart <span class="cart-badge" id="cart-badge" data-testid="cart-badge">0</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Products Page -->
+  <main class="container">
+    <header class="page-header">
+      <h1>Our Products</h1>
+      <div class="filters">
+        <label for="category-filter" data-testid="category-filter-label">Category:</label>
+        <select id="category-filter" data-testid="category-filter">
+          <option value="all">All Products</option>
+          <option value="electronics">Electronics</option>
+          <option value="clothing">Clothing</option>
+          <option value="books">Books</option>
+        </select>
+        <label for="sort-filter" data-testid="sort-filter-label">Sort by:</label>
+        <select id="sort-filter" data-testid="sort-filter">
+          <option value="name">Name</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- Products Grid -->
+    <div id="products-grid" class="product-grid" data-testid="products-grid">
+      <!-- Products will be rendered dynamically -->
+    </div>
+  </main>
+
+  <!-- Product Detail Modal -->
+  <div id="product-modal" class="modal" data-testid="product-modal">
+    <div class="modal-content">
+      <button class="modal-close" data-testid="modal-close">&times;</button>
+      <div id="modal-body" data-testid="modal-body">
+        <!-- Product details will be inserted here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>Gremlin Session Recorder Demo &middot; Built with @gremlin/recorder-web</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/recorder.js"></script>
+</body>
+</html>

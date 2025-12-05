@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout - Gremlin Demo Shop</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Recording Controls -->
+  <div id="recorder-controls" class="recorder-controls">
+    <div class="recorder-status">
+      <span class="status-indicator" id="status-indicator"></span>
+      <span id="status-text">Not Recording</span>
+      <span class="event-count" id="event-count">0 events</span>
+    </div>
+    <div class="recorder-buttons">
+      <button id="start-recording" data-testid="recorder-start-btn" class="btn btn-primary">
+        Start Recording
+      </button>
+      <button id="stop-recording" data-testid="recorder-stop-btn" class="btn btn-secondary" disabled>
+        Stop Recording
+      </button>
+      <button id="export-session" data-testid="recorder-export-btn" class="btn btn-accent" disabled>
+        Export JSON
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo" data-testid="nav-logo">
+        🧪 Gremlin Demo Shop
+      </a>
+      <ul class="nav-menu">
+        <li><a href="/" data-testid="nav-home">Home</a></li>
+        <li><a href="/products.html" data-testid="nav-products">Products</a></li>
+        <li>
+          <a href="/cart.html" data-testid="nav-cart" class="cart-link">
+            Cart <span class="cart-badge" id="cart-badge" data-testid="cart-badge">0</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Checkout Page -->
+  <main class="container">
+    <header class="page-header">
+      <h1>Checkout</h1>
+      <div class="checkout-steps">
+        <div class="step active" data-testid="step-shipping">
+          <span class="step-number">1</span>
+          <span class="step-label">Shipping</span>
+        </div>
+        <div class="step" data-testid="step-payment">
+          <span class="step-number">2</span>
+          <span class="step-label">Payment</span>
+        </div>
+        <div class="step" data-testid="step-review">
+          <span class="step-number">3</span>
+          <span class="step-label">Review</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="checkout-layout">
+      <!-- Checkout Form -->
+      <div class="checkout-form">
+        <form id="checkout-form" data-testid="checkout-form">
+          <!-- Shipping Information -->
+          <section class="form-section" id="shipping-section">
+            <h2>Shipping Information</h2>
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                data-testid="checkout-email"
+                placeholder="your@email.com"
+                required
+              >
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="first-name">First Name</label>
+                <input
+                  type="text"
+                  id="first-name"
+                  data-testid="checkout-first-name"
+                  placeholder="John"
+                  required
+                >
+              </div>
+              <div class="form-group">
+                <label for="last-name">Last Name</label>
+                <input
+                  type="text"
+                  id="last-name"
+                  data-testid="checkout-last-name"
+                  placeholder="Doe"
+                  required
+                >
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="address">Address</label>
+              <input
+                type="text"
+                id="address"
+                data-testid="checkout-address"
+                placeholder="123 Main St"
+                required
+              >
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="city">City</label>
+                <input
+                  type="text"
+                  id="city"
+                  data-testid="checkout-city"
+                  placeholder="San Francisco"
+                  required
+                >
+              </div>
+              <div class="form-group">
+                <label for="state">State</label>
+                <select id="state" data-testid="checkout-state" required>
+                  <option value="">Select State</option>
+                  <option value="CA">California</option>
+                  <option value="NY">New York</option>
+                  <option value="TX">Texas</option>
+                  <option value="FL">Florida</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="zip">ZIP Code</label>
+                <input
+                  type="text"
+                  id="zip"
+                  data-testid="checkout-zip"
+                  placeholder="94102"
+                  pattern="[0-9]{5}"
+                  required
+                >
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="phone">Phone Number</label>
+              <input
+                type="tel"
+                id="phone"
+                data-testid="checkout-phone"
+                placeholder="(555) 123-4567"
+              >
+            </div>
+            <button type="button" data-testid="continue-to-payment-btn" class="btn btn-primary">
+              Continue to Payment
+            </button>
+          </section>
+
+          <!-- Payment Information -->
+          <section class="form-section" id="payment-section" style="display: none;">
+            <h2>Payment Information</h2>
+            <div class="form-group">
+              <label for="card-number">Card Number</label>
+              <input
+                type="text"
+                id="card-number"
+                data-testid="checkout-card-number"
+                placeholder="1234 5678 9012 3456"
+                pattern="[0-9\s]{13,19}"
+              >
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="expiry">Expiry Date</label>
+                <input
+                  type="text"
+                  id="expiry"
+                  data-testid="checkout-expiry"
+                  placeholder="MM/YY"
+                  pattern="[0-9]{2}/[0-9]{2}"
+                >
+              </div>
+              <div class="form-group">
+                <label for="cvv">CVV</label>
+                <input
+                  type="text"
+                  id="cvv"
+                  data-testid="checkout-cvv"
+                  placeholder="123"
+                  pattern="[0-9]{3,4}"
+                >
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="save-card"
+                  data-testid="checkout-save-card"
+                >
+                Save card for future purchases
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" data-testid="back-to-shipping-btn" class="btn btn-outline">
+                Back
+              </button>
+              <button type="button" data-testid="continue-to-review-btn" class="btn btn-primary">
+                Review Order
+              </button>
+            </div>
+          </section>
+
+          <!-- Review Order -->
+          <section class="form-section" id="review-section" style="display: none;">
+            <h2>Review Your Order</h2>
+            <div id="order-review" data-testid="order-review">
+              <!-- Order review will be populated dynamically -->
+            </div>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="agree-terms"
+                  data-testid="checkout-agree-terms"
+                  required
+                >
+                I agree to the Terms and Conditions
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" data-testid="back-to-payment-btn" class="btn btn-outline">
+                Back
+              </button>
+              <button type="submit" data-testid="place-order-btn" class="btn btn-primary btn-lg">
+                Place Order
+              </button>
+            </div>
+          </section>
+        </form>
+
+        <!-- Success Message -->
+        <div id="success-message" class="success-message" style="display: none;" data-testid="order-success-message">
+          <div class="success-icon">✓</div>
+          <h2>Order Placed Successfully!</h2>
+          <p>Your order number is: <strong id="order-number" data-testid="order-number"></strong></p>
+          <p>A confirmation email has been sent to <strong id="confirmation-email" data-testid="confirmation-email"></strong></p>
+          <a href="/" data-testid="success-back-home-btn" class="btn btn-primary">
+            Back to Home
+          </a>
+        </div>
+      </div>
+
+      <!-- Order Summary Sidebar -->
+      <aside class="cart-summary">
+        <h2>Order Summary</h2>
+        <div id="checkout-items" data-testid="checkout-items">
+          <!-- Items will be listed here -->
+        </div>
+        <hr>
+        <div class="summary-row">
+          <span>Subtotal:</span>
+          <span id="checkout-subtotal" data-testid="checkout-subtotal">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Shipping:</span>
+          <span id="checkout-shipping" data-testid="checkout-shipping">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Tax:</span>
+          <span id="checkout-tax" data-testid="checkout-tax">$0.00</span>
+        </div>
+        <hr>
+        <div class="summary-row summary-total">
+          <strong>Total:</strong>
+          <strong id="checkout-total" data-testid="checkout-total">$0.00</strong>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>Gremlin Session Recorder Demo &middot; Built with @gremlin/recorder-web</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/recorder.js"></script>
+</body>
+</html>

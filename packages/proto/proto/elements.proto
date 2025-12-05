@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package gremlin;
+
+/**
+ * Element information for the dictionary.
+ * Events reference elements by index to save space.
+ */
+message ElementInfo {
+  // Test ID (best for test generation)
+  optional string test_id = 1;
+
+  // Accessibility label
+  optional string accessibility_label = 2;
+
+  // Visible text content
+  optional string text = 3;
+
+  // Element type
+  ElementType type = 4;
+
+  // Bounding rectangle
+  optional Rect bounds = 5;
+
+  // CSS selector (web only)
+  optional string css_selector = 6;
+
+  // Additional attributes (stored as key-value pairs)
+  map<string, string> attributes = 7;
+}
+
+/**
+ * Element type enum
+ */
+enum ElementType {
+  ELEMENT_TYPE_UNKNOWN = 0;
+  ELEMENT_TYPE_BUTTON = 1;
+  ELEMENT_TYPE_LINK = 2;
+  ELEMENT_TYPE_INPUT = 3;
+  ELEMENT_TYPE_TEXT = 4;
+  ELEMENT_TYPE_IMAGE = 5;
+  ELEMENT_TYPE_CONTAINER = 6;
+  ELEMENT_TYPE_SCROLL_VIEW = 7;
+  ELEMENT_TYPE_LIST = 8;
+  ELEMENT_TYPE_LIST_ITEM = 9;
+  ELEMENT_TYPE_MODAL = 10;
+  ELEMENT_TYPE_PRESSABLE = 11;
+  ELEMENT_TYPE_TOUCHABLE = 12;
+}
+
+/**
+ * Bounding rectangle
+ */
+message Rect {
+  float x = 1;
+  float y = 2;
+  float width = 3;
+  float height = 4;
+}

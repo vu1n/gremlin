@@ -1,0 +1,23 @@
+{
+  "name": "@gremlin/server",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "bun test",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gremlin/core": "workspace:*",
+    "@gremlin/proto": "workspace:*",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "@types/bun": "latest",
+    "typescript": "^5.0.0",
+    "wrangler": "^3.0.0"
+  }
+}

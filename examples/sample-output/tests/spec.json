@@ -1,0 +1,222 @@
+{
+  "name": "app",
+  "schemaVersion": 1,
+  "variables": [
+    {
+      "id": "var_0",
+      "name": "cartItemCount",
+      "type": "number",
+      "initialValue": 0,
+      "description": "The number of items in the shopping cart."
+    },
+    {
+      "id": "var_1",
+      "name": "searchTerm",
+      "type": "string",
+      "initialValue": "",
+      "description": "The current search query."
+    },
+    {
+      "id": "var_2",
+      "name": "email",
+      "type": "string",
+      "initialValue": "",
+      "description": "The user's email address for checkout."
+    }
+  ],
+  "states": [
+    {
+      "id": "home",
+      "name": "Home",
+      "description": "The main landing page, displaying products.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "search_results",
+      "name": "Search Results",
+      "description": "Displays products matching a search query.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "product_detail",
+      "name": "Product Detail",
+      "description": "Detailed view of a single product.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "cart_empty",
+      "name": "Cart Empty",
+      "description": "The shopping cart when it contains no items.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "cart_with_items",
+      "name": "Cart With Items",
+      "description": "The shopping cart when it contains one or more items.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "checkout",
+      "name": "Checkout",
+      "description": "The checkout page where the user provides shipping and payment information.",
+      "invariants": [],
+      "observedCount": 0
+    },
+    {
+      "id": "order_confirmation",
+      "name": "Order Confirmation",
+      "description": "Confirmation page after an order has been placed.",
+      "invariants": [],
+      "observedCount": 0
+    }
+  ],
+  "initialState": "home",
+  "transitions": [
+    {
+      "id": "t0",
+      "from": "home",
+      "to": "product_detail",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "product-card-*"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t1",
+      "from": "product_detail",
+      "to": "cart_with_items",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "add-to-cart-btn"
+        }
+      },
+      "frequency": 2
+    },
+    {
+      "id": "t2",
+      "from": "cart_with_items",
+      "to": "checkout",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "checkout-btn"
+        }
+      },
+      "guard": {
+        "type": "literal",
+        "value": true
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t3",
+      "from": "checkout",
+      "to": "order_confirmation",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "place-order-btn"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t4",
+      "from": "home",
+      "to": "search_results",
+      "event": {
+        "type": "input",
+        "element": {
+          "testId": "search-input"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t5",
+      "from": "search_results",
+      "to": "product_detail",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "search-result-*"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t6",
+      "from": "cart_with_items",
+      "to": "home",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "continue-shopping-btn"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t7",
+      "from": "home",
+      "to": "cart_with_items",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "cart-icon"
+        }
+      },
+      "frequency": 1
+    },
+    {
+      "id": "t8",
+      "from": "home",
+      "to": "home",
+      "event": {
+        "type": "NAVIGATE",
+        "element": {
+          "testId": " push → home"
+        }
+      },
+      "frequency": 2
+    }
+  ],
+  "properties": [
+    {
+      "id": "prop_0",
+      "name": "OrderConfirmationReachableOnlyThroughCheckout",
+      "naturalLanguage": "The OrderConfirmation state can only be reached by first going through the Checkout state.",
+      "type": "invariant",
+      "predicate": {
+        "type": "literal",
+        "value": true
+      }
+    },
+    {
+      "id": "prop_1",
+      "name": "CheckoutRequiresNonEmptyCart",
+      "naturalLanguage": "Cannot transition to Checkout with an empty cart.",
+      "type": "invariant",
+      "predicate": {
+        "type": "literal",
+        "value": true
+      }
+    }
+  ],
+  "metadata": {
+    "createdAt": "2025-12-04T18:14:35.749Z",
+    "updatedAt": "2025-12-04T18:14:35.749Z",
+    "sessionCount": 2,
+    "platform": "web",
+    "appVersions": []
+  }
+}

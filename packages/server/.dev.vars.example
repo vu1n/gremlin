@@ -1,0 +1,6 @@
+# Development environment variables
+# Copy this file to .dev.vars and fill in the values
+
+# API key for authentication
+# Generate a secure random key: openssl rand -hex 32
+API_KEY=your-api-key-here

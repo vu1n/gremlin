@@ -1,0 +1,54 @@
+appId: com.example.app
+
+# Flow from Home to Order Confirmation
+# Steps: 7
+
+---
+
+- launchApp:
+    clearState: true
+
+# Step 1: Home → Cart With Items
+- tapOn: "cart-icon"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 2: Cart With Items → Home
+- tapOn: "continue-shopping-btn"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 3: Home → Search Results
+- tapOn: "search-input"
+- eraseText: 50
+- inputText: "test input"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 4: Search Results → Product Detail
+- tapOn: "search-result-*"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 5: Product Detail → Cart With Items
+- tapOn: "add-to-cart-btn"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 6: Cart With Items → Checkout
+# Guard: {"type":"literal","value":true}
+- tapOn: "checkout-btn"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+
+# Step 7: Checkout → Order Confirmation
+- tapOn: "place-order-btn"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000

@@ -1,0 +1,36 @@
+{
+  "header": {
+    "sessionId": "test-session-2",
+    "startTime": 1701677000000,
+    "device": {
+      "platform": "web",
+      "osVersion": "Chrome 120",
+      "screen": { "width": 1920, "height": 1080, "pixelRatio": 2 },
+      "userAgent": "Mozilla/5.0 Chrome/120"
+    },
+    "app": {
+      "name": "E-Commerce Demo",
+      "version": "1.0.0",
+      "identifier": "localhost:3000"
+    },
+    "schemaVersion": 1
+  },
+  "elements": [
+    { "testId": "search-input", "type": "input" },
+    { "testId": "search-result-1", "type": "pressable", "text": "Bluetooth Speaker" },
+    { "testId": "add-to-cart-btn", "type": "button", "text": "Add to Cart" },
+    { "testId": "continue-shopping-btn", "type": "button", "text": "Continue Shopping" }
+  ],
+  "events": [
+    { "dt": 0, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "home", "url": "/" } },
+    { "dt": 1500, "type": 0, "data": { "kind": "tap", "x": 600, "y": 50, "elementIndex": 0 } },
+    { "dt": 500, "type": 5, "data": { "kind": "input", "elementIndex": 0, "value": "speaker", "masked": false } },
+    { "dt": 2000, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "search_results", "url": "/search?q=speaker" } },
+    { "dt": 2500, "type": 0, "data": { "kind": "tap", "x": 400, "y": 250, "elementIndex": 1 } },
+    { "dt": 1500, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "product_detail", "url": "/product/5" } },
+    { "dt": 3000, "type": 0, "data": { "kind": "tap", "x": 500, "y": 600, "elementIndex": 2 } },
+    { "dt": 1500, "type": 0, "data": { "kind": "tap", "x": 400, "y": 700, "elementIndex": 3 } },
+    { "dt": 1000, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "home", "url": "/" } }
+  ],
+  "screenshots": []
+}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gremlin Demo Shop - Home</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Recording Controls -->
+  <div id="recorder-controls" class="recorder-controls">
+    <div class="recorder-status">
+      <span class="status-indicator" id="status-indicator"></span>
+      <span id="status-text">Not Recording</span>
+      <span class="event-count" id="event-count">0 events</span>
+    </div>
+    <div class="recorder-buttons">
+      <button id="start-recording" data-testid="recorder-start-btn" class="btn btn-primary">
+        Start Recording
+      </button>
+      <button id="stop-recording" data-testid="recorder-stop-btn" class="btn btn-secondary" disabled>
+        Stop Recording
+      </button>
+      <button id="export-session" data-testid="recorder-export-btn" class="btn btn-accent" disabled>
+        Export JSON
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo" data-testid="nav-logo">
+        🧪 Gremlin Demo Shop
+      </a>
+      <ul class="nav-menu">
+        <li><a href="/" data-testid="nav-home" class="active">Home</a></li>
+        <li><a href="/products.html" data-testid="nav-products">Products</a></li>
+        <li>
+          <a href="/cart.html" data-testid="nav-cart" class="cart-link">
+            Cart <span class="cart-badge" id="cart-badge" data-testid="cart-badge">0</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <main class="container">
+    <section class="hero">
+      <h1>Welcome to Gremlin Demo Shop</h1>
+      <p class="hero-subtitle">
+        This demo showcases the <strong>@gremlin/recorder-web</strong> SDK capturing user interactions
+        with <code>data-testid</code> attributes for automated test generation.
+      </p>
+      <div class="hero-actions">
+        <a href="/products.html" data-testid="hero-browse-btn" class="btn btn-primary btn-lg">
+          Browse Products
+        </a>
+        <button data-testid="hero-demo-btn" class="btn btn-outline btn-lg" onclick="alert('Demo: This app showcases Gremlin session recording. Click \'Start Recording\' above, then browse products, add to cart, and checkout. Finally, click \'Export JSON\' to download the recorded session!')">
+          Watch Demo
+        </button>
+      </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="features">
+      <h2>How It Works</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3>Capture Interactions</h3>
+          <p>Every click, input, and scroll is recorded with element metadata including data-testid attributes.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🏷️</div>
+          <h3>Test IDs Tracked</h3>
+          <p>All interactive elements use data-testid attributes that Gremlin captures for test generation.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Export Sessions</h3>
+          <p>Export recorded sessions as JSON to analyze user flows and generate automated tests.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🚀</div>
+          <h3>No Framework Lock-in</h3>
+          <p>Works with vanilla JavaScript, React, Vue, or any web framework. Drop in and go.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section class="quick-start">
+      <h2>Try It Out</h2>
+      <ol class="instructions">
+        <li>
+          <strong>Click "Start Recording"</strong> in the control panel above
+        </li>
+        <li>
+          <strong>Browse products</strong> and add items to your cart
+        </li>
+        <li>
+          <strong>Complete checkout</strong> with sample data
+        </li>
+        <li>
+          <strong>Click "Export JSON"</strong> to see the captured session
+        </li>
+      </ol>
+      <div class="code-sample">
+        <h3>Example: Element Captured</h3>
+        <pre><code>{
+  "kind": "tap",
+  "x": 450,
+  "y": 120,
+  "elementIndex": 5
+}
+
+// Element metadata includes:
+{
+  "testId": "product-add-to-cart-1",
+  "role": "button",
+  "label": "Add to Cart",
+  "tagName": "BUTTON"
+}</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>Gremlin Session Recorder Demo &middot; Built with @gremlin/recorder-web</p>
+      <p class="footer-links">
+        <a href="https://github.com" data-testid="footer-github">GitHub</a>
+        <a href="https://docs.example.com" data-testid="footer-docs">Documentation</a>
+      </p>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/recorder.js"></script>
+</body>
+</html>

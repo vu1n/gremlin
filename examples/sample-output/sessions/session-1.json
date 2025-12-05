@@ -1,0 +1,40 @@
+{
+  "header": {
+    "sessionId": "test-session-1",
+    "startTime": 1701676800000,
+    "device": {
+      "platform": "web",
+      "osVersion": "Chrome 120",
+      "screen": { "width": 1920, "height": 1080, "pixelRatio": 2 },
+      "userAgent": "Mozilla/5.0 Chrome/120"
+    },
+    "app": {
+      "name": "E-Commerce Demo",
+      "version": "1.0.0",
+      "identifier": "localhost:3000"
+    },
+    "schemaVersion": 1
+  },
+  "elements": [
+    { "testId": "product-card-1", "type": "pressable", "text": "Wireless Headphones" },
+    { "testId": "add-to-cart-btn", "type": "button", "text": "Add to Cart" },
+    { "testId": "cart-icon", "type": "button" },
+    { "testId": "checkout-btn", "type": "button", "text": "Checkout" },
+    { "testId": "email-input", "type": "input" },
+    { "testId": "place-order-btn", "type": "button", "text": "Place Order" }
+  ],
+  "events": [
+    { "dt": 0, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "home", "url": "/" } },
+    { "dt": 2500, "type": 0, "data": { "kind": "tap", "x": 400, "y": 300, "elementIndex": 0 } },
+    { "dt": 1500, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "product_detail", "url": "/product/1" } },
+    { "dt": 3000, "type": 0, "data": { "kind": "tap", "x": 500, "y": 600, "elementIndex": 1 } },
+    { "dt": 1000, "type": 0, "data": { "kind": "tap", "x": 50, "y": 50, "elementIndex": 2 } },
+    { "dt": 1500, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "cart", "url": "/cart" } },
+    { "dt": 2000, "type": 0, "data": { "kind": "tap", "x": 300, "y": 500, "elementIndex": 3 } },
+    { "dt": 1500, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "checkout", "url": "/checkout" } },
+    { "dt": 2000, "type": 5, "data": { "kind": "input", "elementIndex": 4, "value": "test@example.com", "masked": false } },
+    { "dt": 3000, "type": 0, "data": { "kind": "tap", "x": 300, "y": 600, "elementIndex": 5 } },
+    { "dt": 2000, "type": 6, "data": { "kind": "navigation", "navType": "push", "screen": "order_confirmation", "url": "/order/success" } }
+  ],
+  "screenshots": []
+}
