@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Product } from '../types';
-import { getGremlin } from '../lib/gremlin';
 
 interface ProductCardProps {
   product: Product;
@@ -10,23 +9,10 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onPress, testID }: ProductCardProps) {
-  const handlePress = () => {
-    try {
-      getGremlin().recordTap(testID, {
-        action: 'product_card_tap',
-        productId: product.id,
-        productName: product.name,
-      });
-    } catch (e) {
-      // Gremlin not initialized, silently continue
-    }
-    onPress();
-  };
-
   return (
     <Pressable
       testID={testID}
-      onPress={handlePress}
+      onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.imageContainer}>

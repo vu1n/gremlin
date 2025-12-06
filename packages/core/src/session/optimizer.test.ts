@@ -6,10 +6,10 @@ import {
   decompressSession,
   measureCompression,
   formatCompressionStats,
-} from './optimizer.ts';
-import { createSession, getOrCreateElement } from './types.ts';
-import type { GremlinSession, DeviceInfo, AppInfo } from './types.ts';
-import { EventTypeEnum } from './types.ts';
+} from './optimizer';
+import { createSession, getOrCreateElement } from './types';
+import type { GremlinSession, DeviceInfo, AppInfo } from './types';
+import { EventTypeEnum } from './types';
 
 describe('Session Optimizer', () => {
   // Create a sample session for testing

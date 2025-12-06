@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { CartItem as CartItemType } from '../types';
-import { getGremlin } from '../lib/gremlin';
 
 interface CartItemProps {
   item: CartItemType;
@@ -16,43 +15,9 @@ export function CartItem({
   onRemove,
   testID,
 }: CartItemProps) {
-  const handleIncrement = () => {
-    try {
-      getGremlin().recordTap(`${testID}-increment`, {
-        action: 'increment_quantity',
-        productId: item.product.id,
-        newQuantity: item.quantity + 1,
-      });
-    } catch (e) {
-      // Gremlin not initialized, silently continue
-    }
-    onUpdateQuantity(item.quantity + 1);
-  };
-
-  const handleDecrement = () => {
-    try {
-      getGremlin().recordTap(`${testID}-decrement`, {
-        action: 'decrement_quantity',
-        productId: item.product.id,
-        newQuantity: item.quantity - 1,
-      });
-    } catch (e) {
-      // Gremlin not initialized, silently continue
-    }
-    onUpdateQuantity(item.quantity - 1);
-  };
-
-  const handleRemove = () => {
-    try {
-      getGremlin().recordTap(`${testID}-remove`, {
-        action: 'remove_item',
-        productId: item.product.id,
-      });
-    } catch (e) {
-      // Gremlin not initialized, silently continue
-    }
-    onRemove();
-  };
+  const handleIncrement = () => onUpdateQuantity(item.quantity + 1);
+  const handleDecrement = () => onUpdateQuantity(item.quantity - 1);
+  const handleRemove = () => onRemove();
 
   const subtotal = item.product.price * item.quantity;
 

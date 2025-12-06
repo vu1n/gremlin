@@ -13,7 +13,7 @@ import type {
   ElementRef,
   Predicate,
   StateId,
-} from '../spec/types.ts';
+} from '../spec/types';
 
 // ============================================================================
 // Types
@@ -483,9 +483,16 @@ function generateStateAssertion(state: State): string | null {
 
   // Check invariants for URL-related conditions
   for (const invariant of state.invariants || []) {
-    if (invariant.type === 'comparison' && invariant.left === 'url') {
-      const urlValue = String(invariant.right);
-      return `await expect(page).toHaveURL(/${urlValue}/);`;
+    if (
+      invariant.type === 'comparison' &&
+      invariant.left.type === 'variable' &&
+      invariant.left.name === 'url'
+    ) {
+      const urlValue =
+        invariant.right.type === 'literal' ? String(invariant.right.value) : '';
+      if (urlValue) {
+        return `await expect(page).toHaveURL(/${urlValue}/);`;
+      }
     }
   }
 

@@ -13,7 +13,7 @@ import type {
   ElementRef,
   Predicate,
   StateId,
-} from '../spec/types.ts';
+} from '../spec/types';
 
 // ============================================================================
 // Types

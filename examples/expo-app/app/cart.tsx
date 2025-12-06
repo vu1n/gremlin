@@ -1,23 +1,14 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CartItem } from '../components/CartItem';
 import { Button } from '../components/Button';
 import { useCartStore } from '../store/cart';
-import { getGremlin } from '../lib/gremlin';
 
 export default function CartScreen() {
   const router = useRouter();
   const { items, updateQuantity, removeItem, getTotal, clearCart } =
     useCartStore();
-
-  useEffect(() => {
-    try {
-      getGremlin().setScreen('cart');
-    } catch (e) {
-      // Gremlin not initialized yet
-    }
-  }, []);
 
   const total = getTotal();
 
@@ -43,14 +34,6 @@ export default function CartScreen() {
   }
 
   const handleClearCart = () => {
-    try {
-      getGremlin().recordTap('cart-clear-cart-button', {
-        action: 'clear_cart',
-        itemCount: items.length,
-      });
-    } catch (e) {
-      // Gremlin not initialized
-    }
     clearCart();
   };
 

@@ -13,7 +13,7 @@
 
 import { gunzipSync, gzipSync } from 'zlib';
 import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
-import type { GremlinSession, GremlinEvent, ElementInfo, Rect } from './types.ts';
+import type { GremlinSession, GremlinEvent, ElementInfo, Rect } from './types';
 
 // ============================================================================
 // Types

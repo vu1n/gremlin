@@ -6,7 +6,7 @@ import {
   IncrementalSource,
   MouseInteractions,
   type RrwebEvent,
-} from './rrweb.ts';
+} from './rrweb';
 
 describe('RrwebImporter', () => {
   test('imports basic rrweb recording with meta and click events', () => {

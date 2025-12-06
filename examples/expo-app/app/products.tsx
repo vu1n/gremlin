@@ -1,39 +1,20 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ProductCard } from '../components/ProductCard';
 import { Button } from '../components/Button';
 import { MOCK_PRODUCTS } from '../lib/mockData';
 import { useCartStore } from '../store/cart';
-import { getGremlin } from '../lib/gremlin';
 
 export default function ProductsScreen() {
   const router = useRouter();
   const itemCount = useCartStore((state) => state.getItemCount());
-
-  useEffect(() => {
-    try {
-      getGremlin().setScreen('products');
-    } catch (e) {
-      // Gremlin not initialized yet
-    }
-  }, []);
-
-  const handleScroll = () => {
-    try {
-      getGremlin().recordScroll({ screen: 'products' });
-    } catch (e) {
-      // Gremlin not initialized
-    }
-  };
 
   return (
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         testID="products-scroll-view"
-        onScroll={handleScroll}
-        scrollEventThrottle={1000}
       >
         <View style={styles.header}>
           <Text style={styles.title}>All Products</Text>

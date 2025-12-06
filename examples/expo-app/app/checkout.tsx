@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
 import { useRouter } from 'expo-router';
 import { Button } from '../components/Button';
 import { useCartStore } from '../store/cart';
-import { getGremlin } from '../lib/gremlin';
 import { CheckoutFormData } from '../types';
 
 export default function CheckoutScreen() {
@@ -28,26 +27,11 @@ export default function CheckoutScreen() {
   });
   const [errors, setErrors] = useState<Partial<CheckoutFormData>>({});
 
-  useEffect(() => {
-    try {
-      getGremlin().setScreen('checkout');
-    } catch (e) {
-      // Gremlin not initialized yet
-    }
-  }, []);
-
   const handleInputChange = (field: keyof CheckoutFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
-    }
-
-    // Record input event
-    try {
-      getGremlin().recordInput(`checkout-${field}-input`, value);
-    } catch (e) {
-      // Gremlin not initialized
     }
   };
 

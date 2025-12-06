@@ -1,22 +1,77 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Button } from '../components/Button';
 import { useCartStore } from '../store/cart';
-import { getGremlin } from '../lib/gremlin';
+import { useGremlin, type GremlinSession } from '../lib/gremlin';
 
 export default function HomeScreen() {
   const router = useRouter();
   const itemCount = useCartStore((state) => state.getItemCount());
+  const { isRecording, startRecording, stopRecording, getSession } = useGremlin();
+  const [eventCount, setEventCount] = useState(0);
 
-  useEffect(() => {
-    try {
-      getGremlin().setScreen('home');
-    } catch (e) {
-      // Gremlin not initialized yet
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      const session = stopRecording();
+      if (session) {
+        const count = session.events?.length || 0;
+        Alert.alert(
+          'Recording Stopped',
+          `Captured ${count} events. Use "Export Session" to save.`
+        );
+      }
+    } else {
+      startRecording();
+      Alert.alert('Recording Started', 'Interact with the app to capture events.');
     }
-  }, []);
+  };
+
+  const handleExportSession = async () => {
+    const session = getSession();
+    if (!session || !session.events?.length) {
+      Alert.alert('No Session', 'No recorded session to export. Start recording first.');
+      return;
+    }
+
+    const sessionJson = JSON.stringify(session, null, 2);
+    console.log('=== GREMLIN SESSION ===');
+    console.log(sessionJson);
+    console.log('=== END SESSION ===');
+
+    try {
+      await Share.share({
+        message: sessionJson,
+        title: `gremlin-session-${session.header?.sessionId || 'unknown'}.json`,
+      });
+    } catch (error) {
+      Alert.alert('Export', 'Session logged to console. Check Metro logs.');
+    }
+  };
+
+  const handleViewStats = () => {
+    const session = getSession();
+    if (!session) {
+      Alert.alert('No Session', 'No active session.');
+      return;
+    }
+
+    const events = session.events || [];
+    const elements = session.elements || [];
+    const eventTypes: Record<string, number> = {};
+    events.forEach((e: any) => {
+      const type = e.data?.kind || 'unknown';
+      eventTypes[type] = (eventTypes[type] || 0) + 1;
+    });
+
+    Alert.alert(
+      'Session Stats',
+      `Events: ${events.length}\n` +
+      `Elements: ${elements.length}\n` +
+      `Types: ${JSON.stringify(eventTypes, null, 2)}`
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -71,6 +126,38 @@ export default function HomeScreen() {
             onPress={() => router.push('/cart')}
             style={styles.cartButton}
           />
+        </View>
+
+        <View style={styles.recorderSection}>
+          <Text style={styles.sectionTitle}>Gremlin Recorder</Text>
+          <View style={styles.recorderStatus}>
+            <View style={[styles.statusDot, isRecording && styles.statusDotActive]} />
+            <Text style={styles.statusText}>
+              {isRecording ? 'Recording...' : 'Not Recording'}
+            </Text>
+          </View>
+          <Button
+            title={isRecording ? 'Stop Recording' : 'Start Recording'}
+            testID="recorder-toggle-button"
+            variant={isRecording ? 'secondary' : 'primary'}
+            onPress={handleToggleRecording}
+          />
+          <View style={styles.recorderActions}>
+            <Button
+              title="View Stats"
+              testID="recorder-stats-button"
+              variant="secondary"
+              onPress={handleViewStats}
+              style={styles.halfButton}
+            />
+            <Button
+              title="Export Session"
+              testID="recorder-export-button"
+              variant="secondary"
+              onPress={handleExportSession}
+              style={styles.halfButton}
+            />
+          </View>
         </View>
 
         <View style={styles.footer}>
@@ -175,5 +262,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#C7C7CC',
     textAlign: 'center',
+  },
+  recorderSection: {
+    marginTop: 32,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  recorderStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#8E8E93',
+    marginRight: 8,
+  },
+  statusDotActive: {
+    backgroundColor: '#FF3B30',
+  },
+  statusText: {
+    fontSize: 16,
+    color: '#3C3C43',
+  },
+  recorderActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  halfButton: {
+    flex: 1,
   },
 });

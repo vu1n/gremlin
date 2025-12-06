@@ -102,6 +102,9 @@ export interface State {
 
   /** Average time spent in this state (ms) */
   avgDuration?: number;
+
+  /** Additional metadata (e.g., URL, route) */
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================

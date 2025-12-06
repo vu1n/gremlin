@@ -10,9 +10,9 @@ import {
   decompressSession,
   measureCompression,
   formatCompressionStats,
-} from './optimizer.ts';
-import { createSession } from './types.ts';
-import type { GremlinSession, DeviceInfo, AppInfo } from './types.ts';
+} from './optimizer';
+import { createSession } from './types';
+import type { GremlinSession, DeviceInfo, AppInfo } from './types';
 
 // ============================================================================
 // Example: Basic Compression

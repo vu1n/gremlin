@@ -6,7 +6,7 @@
  * into a formal state machine specification.
  */
 
-import type { GremlinSession } from '../session/types.ts';
+import type { GremlinSession } from '../session/types';
 import type {
   GremlinSpec,
   State,
@@ -21,8 +21,8 @@ import type {
   Predicate,
   PropertyType,
   VariableType,
-} from '../spec/types.ts';
-import { stateId, transitionId } from '../spec/types.ts';
+} from '../spec/types';
+import { stateId, transitionId } from '../spec/types';
 
 // ============================================================================
 // Types
@@ -493,8 +493,4 @@ function getDefaultValue(type: string): unknown {
   }
 }
 
-// ============================================================================
-// Export
-// ============================================================================
-
-export { FlowAnalyzerOptions, ExtractedSpec };
+// Types are exported at declaration above

@@ -1,10 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '../../components/Button';
 import { MOCK_PRODUCTS } from '../../lib/mockData';
 import { useCartStore } from '../../store/cart';
-import { getGremlin } from '../../lib/gremlin';
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -12,14 +11,6 @@ export default function ProductDetailScreen() {
   const addItem = useCartStore((state) => state.addItem);
 
   const product = MOCK_PRODUCTS.find((p) => p.id === id);
-
-  useEffect(() => {
-    try {
-      getGremlin().setScreen(`product-${id}`);
-    } catch (e) {
-      // Gremlin not initialized yet
-    }
-  }, [id]);
 
   if (!product) {
     return (

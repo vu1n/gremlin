@@ -7,7 +7,6 @@ import {
   TextStyle,
   PressableStateCallbackType,
 } from 'react-native';
-import { getGremlin } from '../lib/gremlin';
 
 interface ButtonProps {
   title: string;
@@ -26,14 +25,6 @@ export function Button({
   disabled = false,
   style,
 }: ButtonProps) {
-  const handlePress = () => {
-    try {
-      getGremlin().recordTap(testID, { action: 'button_press', title });
-    } catch (e) {
-      // Gremlin not initialized, silently continue
-    }
-    onPress();
-  };
 
   const getVariantStyle = (): ViewStyle => {
     switch (variant) {
@@ -58,7 +49,7 @@ export function Button({
   return (
     <Pressable
       testID={testID}
-      onPress={handlePress}
+      onPress={onPress}
       disabled={disabled}
       style={({ pressed }: PressableStateCallbackType) => [
         styles.button,

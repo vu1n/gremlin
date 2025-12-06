@@ -18,8 +18,8 @@ import type {
   InputEvent,
   NavigationEvent,
   ErrorEvent,
-} from '../session/types.ts';
-import { EventTypeEnum } from '../session/types.ts';
+} from '../session/types';
+import { EventTypeEnum } from '../session/types';
 
 // ============================================================================
 // RRWeb Types

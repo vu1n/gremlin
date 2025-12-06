@@ -18,7 +18,7 @@ import type {
   InputEvent,
   NavigationEvent,
   ErrorEvent,
-} from '../session/types.ts';
+} from '../session/types';
 
 // ============================================================================
 // Configuration
@@ -111,13 +111,13 @@ import type {
   MousePosition as RrwebMousePosition,
   SerializedNode as RrwebSerializedNode,
   CustomEventData as RrwebCustomEventData,
-} from './rrweb.ts';
+} from './rrweb';
 
 import {
   RrwebEventType,
   IncrementalSource as RrwebIncrementalSource,
   MouseInteractions,
-} from './rrweb.ts';
+} from './rrweb';
 
 // Use type aliases internally for backward compatibility with PostHog code
 // But don't export them to avoid conflicts with rrweb.ts exports
