@@ -1,5 +1,5 @@
 // GremlinSpec - State machine model
-export * from './spec/types';
+export * from './spec/index';
 
 // Session - Recording format
 // Note: Rename session ElementType to avoid collision with spec ElementType

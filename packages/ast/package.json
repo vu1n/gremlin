@@ -14,7 +14,8 @@
     "test:edge-cases": "bun run src/extractors/routes/expo.edge-cases.test.ts",
     "test:all": "bun run test:routes && bun run test:edge-cases",
     "demo": "bun run cli.ts /Users/vuln/code/gremlin/examples/expo-app",
-    "demo:compare": "bun run examples/compare-sessions.ts"
+    "demo:compare": "bun run examples/compare-sessions.ts",
+    "demo:merger": "bun run src/merger.example.ts"
   },
   "keywords": [
     "gremlin",
@@ -22,7 +23,9 @@
     "routes",
     "expo-router"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@gremlin/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   }

@@ -201,6 +201,124 @@ The Expo Router extractor uses file system scanning to discover routes:
 - Preserves file path information for debugging
 - Returns sorted routes for consistent output
 
+## Spec Merger
+
+The spec merger combines AST routes with session data to produce a unified GremlinSpec with coverage analysis.
+
+### Basic Usage
+
+```typescript
+import { mergeSpecs, calculateCoverage, detectCycles } from '@gremlin/ast';
+import type { GremlinSession } from '@gremlin/core';
+
+// 1. Extract routes from your app
+const routes = extractExpoRoutes({ rootDir: './my-app' }).routes;
+
+// 2. Load session data (from recordings, analytics, etc.)
+const sessions: GremlinSession[] = loadSessions();
+
+// 3. Merge AST + sessions to create spec
+const spec = mergeSpecs(routes, sessions, {
+  platform: 'ios',
+  appName: 'my-app',
+});
+
+// 4. Calculate coverage
+const coverage = calculateCoverage(spec);
+console.log(`Coverage: ${coverage.coveragePercentage}%`);
+console.log(`Unreached states: ${coverage.unreachedStates.length}`);
+console.log(`Unexpected flows: ${coverage.unexpectedFlows.length}`);
+
+// 5. Detect cycles
+const cycles = detectCycles(sessions);
+console.log(`Found ${cycles.length} cycles`);
+```
+
+### Source Tracking
+
+Every state and transition is tagged with its source:
+
+- `'ast'` - Found in AST routes but never observed in sessions
+- `'session'` - Observed in sessions but not found in AST routes
+- `'both'` - Found in AST routes AND observed in sessions
+
+### Coverage Analysis
+
+The coverage analyzer provides:
+
+- **Coverage Percentage**: What % of AST states were actually observed
+- **Unreached States**: States defined in code but never visited
+- **Unexpected States**: States observed but not in AST (hidden routes, admin panels, etc.)
+- **Unexpected Flows**: Transitions between states not implied by AST structure
+
+### Cycle Detection
+
+The cycle detector finds repeating patterns in navigation:
+
+- **Navigation cycles**: Normal back-and-forth (e.g., Home → Products → Home)
+- **State cycles**: Same screen revisited (e.g., Settings → Profile → Settings)
+- **Error cycles**: Loops with errors (e.g., Checkout → Error → Checkout)
+
+For each cycle, you get:
+- The navigation path
+- Frequency (how many times it occurred)
+- Average and max iterations
+- Session IDs where it was observed
+
+### Example
+
+Run the example:
+
+```bash
+cd packages/ast
+bun run demo:merger
+```
+
+This will:
+1. Extract routes from `examples/expo-app`
+2. Create mock session data with various patterns
+3. Merge them and show coverage report
+4. Detect and report cycles
+
+### API
+
+#### mergeSpecs
+
+```typescript
+function mergeSpecs(
+  astRoutes: Route[],
+  sessions: GremlinSession[],
+  options?: {
+    platform?: 'web' | 'ios' | 'android' | 'cross-platform';
+    appName?: string;
+  }
+): GremlinSpecWithSources;
+```
+
+#### calculateCoverage
+
+```typescript
+function calculateCoverage(spec: GremlinSpecWithSources): CoverageInfo;
+```
+
+#### detectCycles
+
+```typescript
+function detectCycles(sessions: GremlinSession[]): CycleInfo[];
+```
+
+#### formatCoverageReport
+
+```typescript
+function formatCoverageReport(coverage: CoverageInfo): string;
+```
+
+#### formatCyclesReport
+
+```typescript
+function formatCyclesReport(cycles: CycleInfo[]): string;
+```
+
 ## Future Enhancements
 
 - [ ] Next.js App Router support

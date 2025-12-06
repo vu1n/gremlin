@@ -412,6 +412,7 @@ function convertToGremlinSpec(
     description: s.description,
     invariants: [],
     observedCount: 0,
+    source: 'session' as const,
   }));
 
   // Convert transitions
@@ -422,6 +423,7 @@ function convertToGremlinSpec(
     event: parseEvent(t.event),
     guard: t.guard ? parseGuard(t.guard) : undefined,
     frequency: t.frequency,
+    source: 'session' as const,
   }));
 
   // Convert variables
@@ -450,6 +452,14 @@ function convertToGremlinSpec(
     initialState: stateId(extracted.initialState),
     transitions,
     properties,
+    cycles: [],
+    coverage: {
+      statesFromAst: 0,
+      statesObserved: states.length,
+      coveragePercent: 0,
+      unreachedStates: [],
+      unexpectedFlows: [],
+    },
     metadata: {
       createdAt: now,
       updatedAt: now,

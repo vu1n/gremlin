@@ -52,6 +52,12 @@ export interface GremlinSpec {
   /** Properties to verify (for TLA+ model checking) */
   properties: Property[];
 
+  /** Detected cycles in the state machine with iteration bounds */
+  cycles: CycleInfo[];
+
+  /** Coverage information comparing AST-discovered vs session-observed states */
+  coverage: CoverageInfo;
+
   /** Metadata about the spec */
   metadata: SpecMetadata;
 }
@@ -103,6 +109,9 @@ export interface State {
   /** Average time spent in this state (ms) */
   avgDuration?: number;
 
+  /** Where this state was discovered from */
+  source: 'ast' | 'session' | 'both';
+
   /** Additional metadata (e.g., URL, route) */
   metadata?: Record<string, unknown>;
 }
@@ -133,11 +142,14 @@ export interface Transition {
   /** Action performed during transition */
   action?: Action;
 
-  /** How many times this transition was observed */
+  /** How many times this transition was observed (0 = AST-only, not observed) */
   frequency: number;
 
   /** Average time for this transition to complete (ms) */
   avgDuration?: number;
+
+  /** Where this transition was discovered from */
+  source: 'ast' | 'session' | 'both';
 }
 
 /**
@@ -238,6 +250,77 @@ export type PropertyType =
   | 'always'       // Always true from some point on
   | 'never'        // Never true
   | 'leads_to';    // X leads to Y
+
+// ============================================================================
+// Cycles
+// ============================================================================
+
+/**
+ * Information about a detected cycle in the state machine.
+ * Cycles can indicate normal navigation patterns, state loops, or bugs.
+ */
+export interface CycleInfo {
+  /** Path of states that form the cycle (e.g., [home, product, cart, home]) */
+  path: StateId[];
+
+  /** Type of cycle detected */
+  type: 'navigation' | 'state' | 'error';
+
+  /** How many times this cycle was observed in sessions */
+  frequency: number;
+
+  /** Average number of iterations per session */
+  avgIterations: number;
+
+  /** Maximum number of iterations observed in any session */
+  maxIterations: number;
+
+  /** Classification of the cycle's behavior */
+  classification: 'normal' | 'suspicious' | 'bug';
+
+  /** Optional description or notes about this cycle */
+  description?: string;
+}
+
+// ============================================================================
+// Coverage
+// ============================================================================
+
+/**
+ * Coverage information comparing code (AST) analysis with observed session data.
+ * The delta between "what code allows" and "what users do" reveals insights.
+ */
+export interface CoverageInfo {
+  /** Number of states discovered from AST/code analysis */
+  statesFromAst: number;
+
+  /** Number of states observed in actual user sessions */
+  statesObserved: number;
+
+  /** Percentage of AST states that were actually observed */
+  coveragePercent: number;
+
+  /** States that exist in code but were never reached in sessions */
+  unreachedStates: StateId[];
+
+  /** Transitions observed in sessions but not found in AST (potential security issue) */
+  unexpectedFlows: TransitionId[];
+
+  /** States that exist in code but have no references (dead code candidates) */
+  deadCodeCandidates?: StateId[];
+
+  /** Optional detailed coverage metrics */
+  details?: {
+    /** Number of transitions from AST */
+    transitionsFromAst?: number;
+
+    /** Number of transitions observed */
+    transitionsObserved?: number;
+
+    /** Transition coverage percentage */
+    transitionCoveragePercent?: number;
+  };
+}
 
 // ============================================================================
 // Predicates
@@ -352,6 +435,14 @@ export function createSpec(name: string, platform: SpecMetadata['platform']): Gr
     initialState: stateId('initial'),
     transitions: [],
     properties: [],
+    cycles: [],
+    coverage: {
+      statesFromAst: 0,
+      statesObserved: 0,
+      coveragePercent: 0,
+      unreachedStates: [],
+      unexpectedFlows: [],
+    },
     metadata: {
       createdAt: now,
       updatedAt: now,
@@ -362,12 +453,17 @@ export function createSpec(name: string, platform: SpecMetadata['platform']): Gr
   };
 }
 
-export function createState(id: string, name: string): State {
+export function createState(
+  id: string,
+  name: string,
+  source: 'ast' | 'session' | 'both' = 'session'
+): State {
   return {
     id: stateId(id),
     name,
     invariants: [],
     observedCount: 0,
+    source,
   };
 }
 
@@ -375,7 +471,8 @@ export function createTransition(
   id: string,
   from: StateId,
   to: StateId,
-  event: TransitionEvent
+  event: TransitionEvent,
+  source: 'ast' | 'session' | 'both' = 'session'
 ): Transition {
   return {
     id: transitionId(id),
@@ -383,5 +480,6 @@ export function createTransition(
     to,
     event,
     frequency: 0,
+    source,
   };
 }

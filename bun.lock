@@ -40,6 +40,16 @@
         "vite": "^5.4.11",
       },
     },
+    "packages/ast": {
+      "name": "@gremlin/ast",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gremlin/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+    },
     "packages/cli": {
       "name": "@gremlin/cli",
       "version": "0.0.1",
@@ -450,6 +460,8 @@
     "@fastify/busboy": ["@fastify/busboy@2.1.1", "", {}, "sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA=="],
 
     "@google/generative-ai": ["@google/generative-ai@0.24.1", "", {}, "sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q=="],
+
+    "@gremlin/ast": ["@gremlin/ast@workspace:packages/ast"],
 
     "@gremlin/cli": ["@gremlin/cli@workspace:packages/cli"],
 
