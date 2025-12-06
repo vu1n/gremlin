@@ -8,6 +8,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./session/types": {
+      "import": "./dist/session/types.js",
+      "types": "./dist/session/types.d.ts"
+    },
+    "./spec/types": {
+      "import": "./dist/spec/types.js",
+      "types": "./dist/spec/types.d.ts"
     }
   },
   "scripts": {

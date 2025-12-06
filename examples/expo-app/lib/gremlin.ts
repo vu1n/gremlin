@@ -8,7 +8,7 @@
 import React, { createContext, useContext, useRef, useState, useEffect, type ReactNode } from 'react';
 import { View, Platform, Dimensions, PixelRatio, type GestureResponderEvent } from 'react-native';
 
-// Import shared types from @gremlin/core
+// Import shared types from @gremlin/core/session/types (avoid optimizer which uses Node zlib)
 import type {
   GremlinSession,
   SessionHeader,
@@ -25,8 +25,9 @@ import type {
   ErrorEvent,
   PerformanceSample,
   Screenshot,
-} from '@gremlin/core';
-import { EventTypeEnum, SessionElementType } from '@gremlin/core';
+  ElementType as SessionElementType,
+} from '@gremlin/core/session/types';
+import { EventTypeEnum } from '@gremlin/core/session/types';
 
 // Re-export types for consumers
 export type {
@@ -48,8 +49,8 @@ export type {
 };
 export { EventTypeEnum };
 
-// Use SessionElementType from core (renamed to avoid collision with spec ElementType)
-export type ElementType = SessionElementType;
+// Re-export ElementType from core
+export type { SessionElementType as ElementType };
 
 // ============================================================================
 // Config
