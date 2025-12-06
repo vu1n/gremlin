@@ -3,9 +3,9 @@ import {
   Pressable,
   Text,
   StyleSheet,
-  ViewStyle,
-  TextStyle,
-  PressableStateCallbackType,
+  type ViewStyle,
+  type TextStyle,
+  type PressableStateCallbackType,
 } from 'react-native';
 
 interface ButtonProps {

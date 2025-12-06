@@ -53,7 +53,7 @@ export class GremlinRecorder {
   private errorHandler: ((error: Error) => void) | null = null;
 
   // Scroll tracking
-  private scrollDebounceTimer: NodeJS.Timeout | null = null;
+  private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastScrollPosition = { x: 0, y: 0 };
 
   constructor(config: GremlinRecorderConfig) {

@@ -38,7 +38,7 @@ export class GestureInterceptor {
   private config: Required<GestureInterceptorConfig>;
   private lastTap: { x: number; y: number; timestamp: number } | null = null;
   private touchStart: TouchData | null = null;
-  private longPressTimer: NodeJS.Timeout | null = null;
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private isLongPress = false;
   private isSwiping = false;
 

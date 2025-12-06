@@ -52,7 +52,7 @@ export class PerformanceMonitor {
   private maxLagSinceLastSample = 0;
 
   // Sample timer
-  private sampleTimer: NodeJS.Timeout | null = null;
+  private sampleTimer: ReturnType<typeof setInterval> | null = null;
 
   // Navigation tracking
   private lastNavigationTime = 0;

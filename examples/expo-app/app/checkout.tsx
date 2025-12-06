@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Button } from '../components/Button';
 import { useCartStore } from '../store/cart';
-import { CheckoutFormData } from '../types';
+import type { CheckoutFormData } from '../types';
 
 export default function CheckoutScreen() {
   const router = useRouter();

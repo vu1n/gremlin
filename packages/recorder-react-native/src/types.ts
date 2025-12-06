@@ -2,14 +2,9 @@
  * React Native specific types for the Gremlin Recorder
  */
 
-// Local event type definition (will be unified with @gremlin/core later)
-export interface GremlinEvent {
-  type: string;
-  timestamp: number;
-  testID?: string;
-  screen?: string;
-  data?: Record<string, any>;
-}
+// Re-export core event type
+import type { GremlinEvent } from '@gremlin/core';
+export type { GremlinEvent };
 
 /**
  * Configuration for the React Native recorder
