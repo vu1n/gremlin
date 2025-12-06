@@ -1,339 +1,161 @@
 /**
  * Gremlin Session Recorder - React Native Integration
  *
- * Uses the shared GremlinSession format from @gremlin/core for cross-platform
- * analytics compatibility (time to checkout, clicks to checkout, etc.)
+ * Extends BaseRecorder from @gremlin/core for shared batching and event logic.
+ * Adds React Native-specific lifecycle handling (AppState) and gesture capture.
  */
 
 import React, { createContext, useContext, useRef, useState, useEffect, type ReactNode } from 'react';
-import { View, Platform, Dimensions, PixelRatio, type GestureResponderEvent } from 'react-native';
+import { View, Platform, Dimensions, PixelRatio, AppState, type GestureResponderEvent, type AppStateStatus } from 'react-native';
 
 // Import shared types from @gremlin/core/session/types (avoid optimizer which uses Node zlib)
 import type {
   GremlinSession,
-  SessionHeader,
   DeviceInfo,
   AppInfo,
   ElementInfo,
-  GremlinEvent,
-  TapEvent,
-  SwipeEvent,
-  ScrollEvent,
-  InputEvent,
-  NavigationEvent,
-  AppStateEvent,
-  ErrorEvent,
-  PerformanceSample,
-  Screenshot,
-  ElementType as SessionElementType,
 } from '@gremlin/core/session/types';
-import { EventTypeEnum } from '@gremlin/core/session/types';
+import { BaseRecorder, type BaseRecorderConfig } from '@gremlin/core/session/recorder-base';
 
 // Re-export types for consumers
-export type {
-  GremlinSession,
-  SessionHeader,
-  DeviceInfo,
-  AppInfo,
-  ElementInfo,
-  GremlinEvent,
-  TapEvent,
-  SwipeEvent,
-  ScrollEvent,
-  InputEvent,
-  NavigationEvent,
-  AppStateEvent,
-  ErrorEvent,
-  PerformanceSample,
-  Screenshot,
-};
-export { EventTypeEnum };
-
-// Re-export ElementType from core
-export type { SessionElementType as ElementType };
+export type { GremlinSession, DeviceInfo, AppInfo, ElementInfo };
+export { EventTypeEnum } from '@gremlin/core/session/types';
 
 // ============================================================================
 // Config
 // ============================================================================
 
-export interface GremlinRecorderConfig {
+export interface GremlinRecorderConfig extends BaseRecorderConfig {
   appName: string;
   appVersion: string;
   appBuild?: string;
   appIdentifier?: string;
-  debug?: boolean;
-  captureGestures?: boolean;
-  captureNavigation?: boolean;
-  capturePerformance?: boolean;
+  /** Capture app state changes (background/foreground) */
+  captureAppState?: boolean;
 }
 
 // ============================================================================
-// Recorder
+// React Native Recorder
 // ============================================================================
 
-export class GremlinRecorder {
-  private session: GremlinSession;
-  private recording: boolean = false;
-  private currentScreen: string = 'unknown';
-  private lastEventTimestamp: number = 0;
-  private elementMap: Map<string, number> = new Map();
-  private config: GremlinRecorderConfig;
-  private scrollCoalesceCount: number = 0;
+/**
+ * React Native session recorder.
+ * Extends BaseRecorder with:
+ * - Platform-specific device/app info
+ * - AppState lifecycle handling for flush on background
+ */
+export class GremlinRecorder extends BaseRecorder {
+  private appConfig: GremlinRecorderConfig;
+  private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
 
   constructor(config: GremlinRecorderConfig) {
-    this.config = config;
-    this.session = this.createEmptySession();
-    this.lastEventTimestamp = Date.now();
+    super({
+      enableBatching: config.enableBatching ?? true,
+      scrollBatchWindow: config.scrollBatchWindow ?? 150,
+      debug: config.debug ?? false,
+    });
 
-    if (this.config.debug) {
-      console.log('[Gremlin] Recorder initialized', { sessionId: this.session.header.sessionId });
+    this.appConfig = config;
+
+    if (this.appConfig.debug) {
+      console.log('[Gremlin] React Native recorder initialized');
     }
   }
 
-  private createEmptySession(): GremlinSession {
+  // ========================================================================
+  // Abstract method implementations
+  // ========================================================================
+
+  protected getDeviceInfo(): DeviceInfo {
     const { width, height } = Dimensions.get('window');
-    const now = Date.now();
 
     return {
-      header: {
-        sessionId: `${now.toString(36)}-${Math.random().toString(36).substring(2, 10)}`,
-        startTime: now,
-        device: {
-          platform: Platform.OS as 'ios' | 'android',
-          osVersion: Platform.Version?.toString() || 'unknown',
-          screen: {
-            width,
-            height,
-            pixelRatio: PixelRatio.get(),
-          },
-        },
-        app: {
-          name: this.config.appName,
-          version: this.config.appVersion,
-          build: this.config.appBuild,
-          identifier: this.config.appIdentifier || this.config.appName,
-        },
-        schemaVersion: 1,
-      },
-      elements: [],
-      events: [],
-      screenshots: [],
-    };
-  }
-
-  start() {
-    this.recording = true;
-    this.session = this.createEmptySession();
-    this.lastEventTimestamp = this.session.header.startTime;
-    this.elementMap.clear();
-    this.scrollCoalesceCount = 0;
-
-    if (this.config.debug) {
-      console.log('[Gremlin] Recording started');
-    }
-  }
-
-  stop(): GremlinSession {
-    this.recording = false;
-    this.session.header.endTime = Date.now();
-
-    if (this.config.debug) {
-      console.log('[Gremlin] Recording stopped');
-      console.log(`[Gremlin] Captured ${this.session.events.length} events, ${this.session.elements.length} elements`);
-    }
-
-    return this.getSession();
-  }
-
-  isRecording(): boolean {
-    return this.recording;
-  }
-
-  private addEvent(type: EventTypeEnum, data: GremlinEvent['data']): void {
-    if (!this.recording) return;
-
-    const now = Date.now();
-    const dt = now - this.lastEventTimestamp;
-    this.lastEventTimestamp = now;
-
-    this.session.events.push({ dt, type, data });
-
-    if (this.config.debug) {
-      console.log(`[Gremlin] Event: ${EventTypeEnum[type]}`, { dt, data });
-    }
-  }
-
-  private getOrCreateElement(info: Partial<ElementInfo>): number {
-    const key = info.testId || info.accessibilityLabel || info.text || 'unknown';
-
-    if (this.elementMap.has(key)) {
-      return this.elementMap.get(key)!;
-    }
-
-    const element: ElementInfo = {
-      type: info.type || 'unknown',
-      ...info,
-    };
-
-    const index = this.session.elements.length;
-    this.session.elements.push(element);
-    this.elementMap.set(key, index);
-
-    return index;
-  }
-
-  // Public recording methods
-
-  recordTap(testId?: string, data?: { x: number; y: number }) {
-    let elementIndex: number | undefined;
-
-    if (testId) {
-      elementIndex = this.getOrCreateElement({ testId, type: 'pressable' });
-    }
-
-    this.addEvent(EventTypeEnum.TAP, {
-      kind: 'tap',
-      x: data?.x ?? 0,
-      y: data?.y ?? 0,
-      elementIndex,
-    } as TapEvent);
-  }
-
-  recordScroll(data?: { x: number; y: number; deltaX?: number; deltaY?: number }) {
-    this.scrollCoalesceCount++;
-
-    // Coalesce scroll events - only emit on significant change or when coalesced count is high
-    const shouldEmit = this.scrollCoalesceCount >= 5;
-
-    if (shouldEmit) {
-      this.addEvent(EventTypeEnum.SCROLL, {
-        kind: 'scroll',
-        deltaX: data?.deltaX ?? data?.x ?? 0,
-        deltaY: data?.deltaY ?? data?.y ?? 0,
-        coalesced: this.scrollCoalesceCount,
-      } as ScrollEvent);
-
-      this.scrollCoalesceCount = 0;
-    }
-  }
-
-  recordInput(testId?: string, value?: string, inputType?: InputEvent['inputType']) {
-    let elementIndex: number | undefined;
-
-    if (testId) {
-      elementIndex = this.getOrCreateElement({ testId, type: 'input' });
-    }
-
-    // Mask sensitive inputs
-    const masked = inputType === 'password' || inputType === 'email';
-
-    this.addEvent(EventTypeEnum.INPUT, {
-      kind: 'input',
-      elementIndex,
-      value: masked ? '[MASKED]' : (value ?? ''),
-      masked,
-      inputType,
-    } as InputEvent);
-  }
-
-  recordNavigation(
-    screen: string,
-    navType: NavigationEvent['navType'] = 'push',
-    fromScreen?: string
-  ) {
-    this.addEvent(EventTypeEnum.NAVIGATION, {
-      kind: 'navigation',
-      navType,
-      screen,
-      fromScreen: fromScreen || this.currentScreen,
-    } as NavigationEvent);
-
-    this.currentScreen = screen;
-  }
-
-  recordError(message: string, stack?: string, fatal: boolean = false) {
-    this.addEvent(EventTypeEnum.ERROR, {
-      kind: 'error',
-      message,
-      stack,
-      errorType: 'js',
-      fatal,
-    } as ErrorEvent);
-  }
-
-  recordAppState(state: AppStateEvent['state']) {
-    this.addEvent(EventTypeEnum.APP_STATE, {
-      kind: 'app_state',
-      state,
-    } as AppStateEvent);
-  }
-
-  setScreen(screen: string) {
-    if (this.recording && screen !== this.currentScreen) {
-      this.recordNavigation(screen, 'push', this.currentScreen);
-    }
-    this.currentScreen = screen;
-  }
-
-  getSession(): GremlinSession {
-    return {
-      ...this.session,
-      header: {
-        ...this.session.header,
-        endTime: this.session.header.endTime || Date.now(),
+      platform: Platform.OS as 'ios' | 'android',
+      osVersion: Platform.Version?.toString() || 'unknown',
+      model: undefined, // Could add expo-device for this
+      screen: {
+        width,
+        height,
+        pixelRatio: PixelRatio.get(),
       },
     };
   }
 
-  getEventCount(): number {
-    return this.session.events.length;
+  protected getAppInfo(): AppInfo {
+    return {
+      name: this.appConfig.appName,
+      version: this.appConfig.appVersion,
+      build: this.appConfig.appBuild,
+      identifier: this.appConfig.appIdentifier || this.appConfig.appName,
+    };
   }
 
-  // Analytics helpers
+  // ========================================================================
+  // Lifecycle
+  // ========================================================================
 
-  /**
-   * Get time from session start to a specific screen (ms)
-   */
-  getTimeToScreen(screenName: string): number | null {
-    let elapsed = 0;
-    for (const event of this.session.events) {
-      elapsed += event.dt;
-      if (event.type === EventTypeEnum.NAVIGATION) {
-        const navData = event.data as NavigationEvent;
-        if (navData.screen === screenName) {
-          return elapsed;
-        }
-      }
+  override start(): void {
+    super.start();
+
+    // Subscribe to app state changes
+    if (this.appConfig.captureAppState !== false) {
+      this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
     }
-    return null;
   }
 
-  /**
-   * Get number of taps before reaching a specific screen
-   */
-  getTapsToScreen(screenName: string): number {
-    let taps = 0;
-    for (const event of this.session.events) {
-      if (event.type === EventTypeEnum.TAP) {
-        taps++;
-      }
-      if (event.type === EventTypeEnum.NAVIGATION) {
-        const navData = event.data as NavigationEvent;
-        if (navData.screen === screenName) {
-          return taps;
-        }
-      }
+  override stop(): GremlinSession | null {
+    // Unsubscribe from app state
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
     }
-    return taps;
+
+    return super.stop();
   }
 
+  override destroy(): void {
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
+    }
+    super.destroy();
+  }
+
+  // ========================================================================
+  // App State Handling
+  // ========================================================================
+
+  private handleAppStateChange = (nextAppState: AppStateStatus): void => {
+    if (!this.isRecording()) return;
+
+    // Map React Native app state to our event types
+    const stateMap: Record<AppStateStatus, 'active' | 'background' | 'inactive'> = {
+      active: 'active',
+      background: 'background',
+      inactive: 'inactive',
+      unknown: 'inactive',
+      extension: 'background',
+    };
+
+    const state = stateMap[nextAppState] || 'inactive';
+
+    // Record the state change (this also flushes on background)
+    this.recordAppState(state);
+
+    if (this.appConfig.debug) {
+      console.log('[Gremlin] App state changed:', state);
+    }
+  };
+
+  // ========================================================================
+  // Convenience methods for React Native
+  // ========================================================================
+
   /**
-   * Get navigation flow (sequence of screens visited)
+   * Record a tap with optional testID lookup.
    */
-  getNavigationFlow(): string[] {
-    return this.session.events
-      .filter(e => e.type === EventTypeEnum.NAVIGATION)
-      .map(e => (e.data as NavigationEvent).screen);
+  recordTapWithTestId(testId: string | undefined, x: number, y: number): void {
+    this.recordTap(x, y, testId ? { testId } : undefined);
   }
 }
 
@@ -375,8 +197,9 @@ export function GremlinProvider({ children, config, autoStart = false }: Gremlin
     }
 
     return () => {
-      if (recorderRef.current?.isRecording()) {
-        recorderRef.current.stop();
+      if (recorderRef.current) {
+        recorderRef.current.destroy();
+        recorderRef.current = null;
       }
     };
   }, []);
@@ -405,34 +228,32 @@ export function GremlinProvider({ children, config, autoStart = false }: Gremlin
     return recorderRef.current?.getEventCount() ?? 0;
   };
 
-  // Capture touch start (taps)
+  // Capture touch start (taps) - no deduplication, all taps are valuable
   const handleTouchCapture = (event: GestureResponderEvent): boolean => {
     const now = Date.now();
+    // Small debounce to avoid double-firing, but not too aggressive
     if (now - lastTapTime.current < 50) return false;
     lastTapTime.current = now;
 
     if (recorderRef.current?.isRecording()) {
       const { pageX, pageY } = event.nativeEvent;
-      recorderRef.current.recordTap(undefined, {
-        x: Math.round(pageX),
-        y: Math.round(pageY),
-      });
+      recorderRef.current.recordTap(Math.round(pageX), Math.round(pageY));
     }
     return false;
   };
 
-  // Capture scroll/move events
+  // Capture scroll/move events - these will be batched by BaseRecorder
   const handleMoveCapture = (event: GestureResponderEvent): boolean => {
     const now = Date.now();
-    if (now - lastScrollTime.current < 100) return false;
+    // Throttle raw move events before they hit the batcher
+    if (now - lastScrollTime.current < 50) return false;
     lastScrollTime.current = now;
 
     if (recorderRef.current?.isRecording()) {
       const { pageX, pageY } = event.nativeEvent;
-      recorderRef.current.recordScroll({
-        x: Math.round(pageX),
-        y: Math.round(pageY),
-      });
+      // For move events, we treat position as scroll delta
+      // The batcher will coalesce these
+      recorderRef.current.recordScroll(Math.round(pageX), Math.round(pageY));
     }
     return false;
   };

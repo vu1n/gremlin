@@ -13,6 +13,14 @@
       "import": "./dist/session/types.js",
       "types": "./dist/session/types.d.ts"
     },
+    "./session/batcher": {
+      "import": "./dist/session/batcher.js",
+      "types": "./dist/session/batcher.d.ts"
+    },
+    "./session/recorder-base": {
+      "import": "./dist/session/recorder-base.js",
+      "types": "./dist/session/recorder-base.d.ts"
+    },
     "./spec/types": {
       "import": "./dist/spec/types.js",
       "types": "./dist/spec/types.d.ts"

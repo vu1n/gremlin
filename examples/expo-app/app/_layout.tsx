@@ -10,9 +10,8 @@ export default function RootLayout() {
         appName: 'Gremlin Demo Shop',
         appVersion: '1.0.0',
         appBuild: '1',
-        captureGestures: true,
-        captureNavigation: true,
-        capturePerformance: true,
+        captureAppState: true,
+        enableBatching: true,
         debug: true,
       }}
       autoStart
