@@ -23,7 +23,8 @@
       "@gremlin/recorder-web": ["./packages/recorder-web/src"],
       "@gremlin/recorder-react-native": ["./packages/recorder-react-native/src"],
       "@gremlin/proto": ["./packages/proto/src"],
-      "@gremlin/server": ["./packages/server/src"]
+      "@gremlin/server": ["./packages/server/src"],
+      "@gremlin/ast": ["./packages/ast/src"]
     }
   },
   "exclude": ["node_modules", "dist", "examples/sample-output"]

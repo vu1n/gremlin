@@ -1,0 +1,29 @@
+{
+  "name": "@gremlin/ast",
+  "version": "0.1.0",
+  "description": "AST analysis and route extraction for Gremlin",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "test:routes": "bun run src/extractors/routes/expo.test.ts",
+    "test:edge-cases": "bun run src/extractors/routes/expo.edge-cases.test.ts",
+    "test:all": "bun run test:routes && bun run test:edge-cases",
+    "demo": "bun run cli.ts /Users/vuln/code/gremlin/examples/expo-app",
+    "demo:compare": "bun run examples/compare-sessions.ts"
+  },
+  "keywords": [
+    "gremlin",
+    "ast",
+    "routes",
+    "expo-router"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
