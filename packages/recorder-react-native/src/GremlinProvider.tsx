@@ -4,7 +4,7 @@
  * Wraps the app to enable gesture capture and provides useGremlin() hook.
  */
 
-import React, { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { GremlinRecorder } from './recorder';
 import { createGestureHandlers } from './gesture-interceptor';
@@ -123,11 +123,12 @@ export function GremlinProvider({
     getSession,
   };
 
-  // Get gesture handlers from recorder
-  const gestureInterceptor = recorderRef.current?.getGestureInterceptor();
-  const gestureHandlers = gestureInterceptor
-    ? createGestureHandlers(gestureInterceptor)
-    : {};
+  // Get gesture handlers from recorder - memoize based on isRecording state
+  // This ensures handlers are updated when recording starts/stops
+  const gestureHandlers = useMemo(() => {
+    const gestureInterceptor = recorderRef.current?.getGestureInterceptor();
+    return gestureInterceptor ? createGestureHandlers(gestureInterceptor) : {};
+  }, [isRecording]);
 
   return (
     <GremlinContext.Provider value={contextValue}>

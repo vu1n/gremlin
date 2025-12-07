@@ -252,15 +252,16 @@ export class GestureInterceptor {
 }
 
 /**
- * Create gesture responder handlers for wrapping root component
+ * Create gesture touch handlers for wrapping root component
+ *
+ * Uses onTouch* props instead of responder props to capture all touches
+ * regardless of responder status.
  */
 export function createGestureHandlers(interceptor: GestureInterceptor) {
   return {
-    onStartShouldSetResponder: () => false, // Don't capture - just observe
-    onMoveShouldSetResponder: () => false,
-    onResponderGrant: interceptor.handleTouchStart,
-    onResponderMove: interceptor.handleTouchMove,
-    onResponderRelease: interceptor.handleTouchEnd,
-    onResponderTerminate: interceptor.handleTouchCancel,
+    onTouchStart: interceptor.handleTouchStart,
+    onTouchMove: interceptor.handleTouchMove,
+    onTouchEnd: interceptor.handleTouchEnd,
+    onTouchCancel: interceptor.handleTouchCancel,
   };
 }

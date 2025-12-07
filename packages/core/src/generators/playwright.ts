@@ -458,45 +458,72 @@ function generateGuardAssertion(guard: Predicate): string | null {
   }
 }
 
+/**
+ * Generate assertion to verify we're in the expected state.
+ *
+ * Strategy (in priority order):
+ * 1. Element-based: Check for identifying element (from metadata or invariants)
+ * 2. URL-based: Use exact URL match if available
+ * 3. Fallback: Wait for network idle
+ *
+ * Rationale: URL assertions are fragile because:
+ * - SPAs may have opaque routes (/app/xyz123)
+ * - URLs don't always contain readable state names
+ * - Different apps use different routing patterns
+ *
+ * Element-based assertions are more robust:
+ * - Directly verify the UI state
+ * - Work with any routing strategy
+ * - More maintainable
+ *
+ * To improve generated tests, add identifying elements to state metadata:
+ * ```typescript
+ * state.metadata = {
+ *   identifyingElement: {
+ *     testId: 'checkout-page',
+ *     // or: text: 'Checkout', type: 'button'
+ *   }
+ * };
+ * ```
+ */
 function generateStateAssertion(state: State): string | null {
-  // Use URL from state metadata if available
+  // Priority 1: Check if state has an identifying element in metadata
+  if (state.metadata?.identifyingElement) {
+    const element = state.metadata.identifyingElement as ElementRef;
+    const locator = generateLocator(element);
+    return `await expect(${locator}).toBeVisible();`;
+  }
+
+  // Priority 2: Check state invariants for element_visible predicates
+  for (const invariant of state.invariants || []) {
+    if (invariant.type === 'element_visible' && invariant.element) {
+      const locator = generateLocator(invariant.element);
+      return `await expect(${locator}).toBeVisible();`;
+    }
+  }
+
+  // Priority 3: Check for element_exists invariants as fallback
+  for (const invariant of state.invariants || []) {
+    if (invariant.type === 'element_exists' && invariant.element) {
+      const locator = generateLocator(invariant.element);
+      return `await expect(${locator}).toBeVisible();`;
+    }
+  }
+
+  // Priority 4: Use exact URL match if available (not regex)
   if (state.metadata?.url) {
     const url = state.metadata.url as string;
-    // Extract path for regex match
+    // Only use URL matching if it's an exact, full URL
     try {
       const urlObj = new URL(url);
-      const pathPattern = urlObj.pathname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return `await expect(page).toHaveURL(/${pathPattern}/);`;
+      // Use exact match, not regex pattern
+      return `await expect(page).toHaveURL('${url}');`;
     } catch {
-      // If not a valid URL, use it as a pattern
-      return `await expect(page).toHaveURL(/${url}/);`;
+      // Invalid URL, skip this approach
     }
   }
 
-  // Use URL patterns from description if available
-  if (state.description?.includes('url:')) {
-    const urlMatch = state.description.match(/url:\s*(\S+)/);
-    if (urlMatch) {
-      return `await expect(page).toHaveURL(/${urlMatch[1]}/);`;
-    }
-  }
-
-  // Check invariants for URL-related conditions
-  for (const invariant of state.invariants || []) {
-    if (
-      invariant.type === 'comparison' &&
-      invariant.left.type === 'variable' &&
-      invariant.left.name === 'url'
-    ) {
-      const urlValue =
-        invariant.right.type === 'literal' ? String(invariant.right.value) : '';
-      if (urlValue) {
-        return `await expect(page).toHaveURL(/${urlValue}/);`;
-      }
-    }
-  }
-
-  // Fallback: wait for network idle instead of asserting specific URL
+  // Priority 5: Fallback to network idle (safest option)
   return `await page.waitForLoadState('networkidle');`;
 }
 
