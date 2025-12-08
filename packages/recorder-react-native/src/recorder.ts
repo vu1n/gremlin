@@ -18,8 +18,8 @@ import type {
   DeviceInfo,
   AppInfo,
   PerformanceSample,
-} from '@gremlin/core';
-import { createSession, getOrCreateElement, addEvent } from '@gremlin/core';
+} from '@gremlin/session';
+import { createSession, getOrCreateElement, addEvent } from '@gremlin/session';
 import { GestureInterceptor, type GestureEvent } from './gesture-interceptor';
 import { NavigationListener, type NavigationChange } from './navigation-listener';
 import { PerformanceMonitor } from './performance-monitor';

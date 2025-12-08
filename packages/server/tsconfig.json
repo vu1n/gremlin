@@ -11,7 +11,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "paths": {
-      "@gremlin/core/*": ["../core/src/*"],
+      "@gremlin/session/*": ["../session/src/*"],
       "@gremlin/proto/*": ["../proto/src/*"]
     }
   },

@@ -6,7 +6,8 @@
  * into a formal state machine specification.
  */
 
-import type { GremlinSession } from '../session/types';
+import { z } from 'zod';
+import type { GremlinSession } from '@gremlin/session';
 import type {
   GremlinSpec,
   State,
@@ -23,6 +24,56 @@ import type {
   VariableType,
 } from '../spec/types';
 import { stateId, transitionId } from '../spec/types';
+
+// ============================================================================
+// Zod Schemas for AI Response Validation
+// ============================================================================
+
+const ExtractedStateSchema = z.object({
+  id: z.string().min(1, 'State id cannot be empty'),
+  name: z.string().min(1, 'State name cannot be empty'),
+  description: z.string(),
+  isTerminal: z.boolean(),
+});
+
+const ExtractedTransitionSchema = z.object({
+  id: z.string().min(1, 'Transition id cannot be empty'),
+  from: z.string().min(1, 'Transition from cannot be empty'),
+  to: z.string().min(1, 'Transition to cannot be empty'),
+  event: z.string().min(1, 'Transition event cannot be empty'),
+  guard: z.string().optional(),
+  frequency: z.number().int().min(0),
+});
+
+const ExtractedVariableSchema = z.object({
+  name: z.string().min(1, 'Variable name cannot be empty'),
+  type: z.enum(['boolean', 'number', 'string']),
+  description: z.string(),
+});
+
+const ExtractedPropertySchema = z.object({
+  name: z.string().min(1, 'Property name cannot be empty'),
+  description: z.string(),
+  type: z.enum(['invariant', 'never', 'eventually', 'leads_to']),
+});
+
+const ExtractedSpecSchema = z.object({
+  states: z.array(ExtractedStateSchema).min(1, 'Must have at least one state'),
+  transitions: z.array(ExtractedTransitionSchema),
+  initialState: z.string().min(1, 'Initial state cannot be empty'),
+  variables: z.array(ExtractedVariableSchema),
+  properties: z.array(ExtractedPropertySchema),
+  insights: z.array(z.string()),
+}).refine(
+  (data) => data.states.some(s => s.id === data.initialState),
+  { message: 'initialState must reference an existing state id' }
+).refine(
+  (data) => {
+    const stateIds = new Set(data.states.map(s => s.id));
+    return data.transitions.every(t => stateIds.has(t.from) && stateIds.has(t.to));
+  },
+  { message: 'All transition from/to must reference existing state ids' }
+);
 
 // ============================================================================
 // Types
@@ -43,6 +94,17 @@ export interface FlowAnalyzerOptions {
 
   /** Platform */
   platform: 'web' | 'ios' | 'android' | 'cross-platform';
+
+  /** Maximum retry attempts for validation failures (default: 3) */
+  maxRetries?: number;
+
+  /** Callback for progress updates */
+  onProgress?: (message: string) => void;
+}
+
+export interface ValidationError {
+  path: string[];
+  message: string;
 }
 
 export interface ExtractedSpec {
@@ -80,26 +142,204 @@ export interface ExtractedSpec {
 
 /**
  * Analyze sessions and extract a GremlinSpec using AI.
+ * Includes Zod schema validation with automatic retry on validation failures.
  */
 export async function analyzeFlows(
   sessions: GremlinSession[],
   options: FlowAnalyzerOptions
 ): Promise<GremlinSpec> {
-  const { provider, apiKey, model, appName, platform } = options;
+  const { provider, apiKey, model, appName, platform, maxRetries = 3, onProgress } = options;
 
   // Format sessions for the prompt
   const sessionsPrompt = formatSessionsForPrompt(sessions);
 
   // Build the extraction prompt
-  const prompt = buildExtractionPrompt(sessionsPrompt);
+  let prompt = buildExtractionPrompt(sessionsPrompt);
 
-  // Call AI provider
-  const extracted = await callAIProvider(provider, apiKey, model, prompt);
+  let lastError: Error | null = null;
+  let lastValidationErrors: ValidationError[] = [];
 
-  // Convert extracted data to GremlinSpec
-  const spec = convertToGremlinSpec(extracted, appName, platform, sessions.length);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    onProgress?.(`AI extraction attempt ${attempt}/${maxRetries}...`);
 
-  return spec;
+    try {
+      // Call AI provider
+      const rawResponse = await callAIProviderRaw(provider, apiKey, model, prompt);
+
+      // Parse JSON
+      const parsed = parseAIResponse(rawResponse);
+
+      // Validate with Zod
+      const validated = validateExtractedSpec(parsed);
+
+      onProgress?.('Validation passed, converting to GremlinSpec...');
+
+      // Convert extracted data to GremlinSpec
+      const spec = convertToGremlinSpec(validated, appName, platform, sessions.length);
+
+      return spec;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // If it's a validation error, build a retry prompt with the errors
+      if (error instanceof AIValidationError) {
+        lastValidationErrors = error.errors;
+        onProgress?.(`Validation failed (attempt ${attempt}): ${error.errors.map(e => e.message).join(', ')}`);
+
+        // Build retry prompt with validation errors
+        prompt = buildRetryPrompt(sessionsPrompt, error.errors, error.rawResponse);
+      } else {
+        onProgress?.(`Error (attempt ${attempt}): ${lastError.message}`);
+        // For non-validation errors, throw immediately
+        throw lastError;
+      }
+    }
+  }
+
+  // All retries exhausted
+  throw new AIExtractionError(
+    `Failed to extract valid spec after ${maxRetries} attempts`,
+    lastValidationErrors,
+    lastError
+  );
+}
+
+/**
+ * Custom error for validation failures with structured error info
+ */
+export class AIValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly errors: ValidationError[],
+    public readonly rawResponse: string
+  ) {
+    super(message);
+    this.name = 'AIValidationError';
+  }
+}
+
+/**
+ * Custom error for extraction failures after all retries
+ */
+export class AIExtractionError extends Error {
+  constructor(
+    message: string,
+    public readonly validationErrors: ValidationError[],
+    public readonly lastError: Error | null
+  ) {
+    super(message);
+    this.name = 'AIExtractionError';
+  }
+}
+
+/**
+ * Validate extracted spec with Zod schema
+ */
+function validateExtractedSpec(data: unknown): ExtractedSpec {
+  const result = ExtractedSpecSchema.safeParse(data);
+
+  if (!result.success) {
+    const errors: ValidationError[] = result.error.issues.map(issue => ({
+      path: issue.path.map(String),
+      message: issue.message,
+    }));
+
+    throw new AIValidationError(
+      `AI response validation failed: ${errors.map(e => e.message).join('; ')}`,
+      errors,
+      JSON.stringify(data, null, 2)
+    );
+  }
+
+  return result.data;
+}
+
+/**
+ * Build a retry prompt that includes the validation errors
+ */
+function buildRetryPrompt(sessionsData: string, errors: ValidationError[], previousResponse: string): string {
+  const errorList = errors.map(e => `- ${e.path.join('.')}: ${e.message}`).join('\n');
+
+  return `You are an expert at analyzing user behavior data to infer application state machines.
+
+Given the following user session recordings, analyze the data and extract a formal state machine specification.
+
+## Sessions Data
+
+${sessionsData}
+
+## IMPORTANT: Your previous response had validation errors
+
+Your previous response:
+\`\`\`json
+${previousResponse}
+\`\`\`
+
+Validation errors found:
+${errorList}
+
+Please fix these issues and provide a corrected response.
+
+## Your Task
+
+Analyze these user sessions and produce a state machine specification with:
+
+1. **States**: Identify all meaningful application states. Don't just list screens - identify the semantic state (e.g., "cart_empty" vs "cart_with_items" vs "checkout_ready")
+
+2. **Transitions**: Identify all transitions between states, including:
+   - The trigger event (tap, input, navigation)
+   - The source and destination states
+   - Any guards/conditions (e.g., "cart must have items")
+
+3. **Initial State**: What state does the app start in? MUST be one of the state IDs.
+
+4. **Variables**: What variables track state? (e.g., isLoggedIn, cartItemCount, hasPaymentMethod)
+
+5. **Properties**: What invariants should hold? Express as natural language.
+
+## Output Format
+
+Respond with a JSON object matching this TypeScript interface:
+
+\`\`\`typescript
+interface ExtractedSpec {
+  states: Array<{
+    id: string;        // NON-EMPTY unique identifier
+    name: string;      // NON-EMPTY display name
+    description: string;
+    isTerminal: boolean;
+  }>;
+
+  transitions: Array<{
+    id: string;        // NON-EMPTY unique identifier
+    from: string;      // MUST match a state id
+    to: string;        // MUST match a state id
+    event: string;     // NON-EMPTY, e.g., "tap:checkout-btn"
+    guard?: string;    // optional natural language condition
+    frequency: number; // integer >= 0
+  }>;
+
+  initialState: string;  // MUST match one of the state ids
+
+  variables: Array<{
+    name: string;      // NON-EMPTY
+    type: "boolean" | "number" | "string";
+    description: string;
+  }>;
+
+  properties: Array<{
+    name: string;      // NON-EMPTY
+    description: string;
+    type: "invariant" | "never" | "eventually" | "leads_to";
+  }>;
+
+  insights: string[];
+}
+\`\`\`
+
+CRITICAL: Ensure all id references are valid. initialState and all transition from/to values MUST match existing state ids.
+
+Output ONLY the JSON, no other text.`;
 }
 
 // ============================================================================
@@ -267,29 +507,32 @@ Output ONLY the JSON, no other text.`;
 // AI Provider Calls
 // ============================================================================
 
-async function callAIProvider(
+/**
+ * Call AI provider and return raw string response (for validation pipeline)
+ */
+async function callAIProviderRaw(
   provider: 'anthropic' | 'openai' | 'gemini',
   apiKey: string,
   model: string | undefined,
   prompt: string
-): Promise<ExtractedSpec> {
+): Promise<string> {
   switch (provider) {
     case 'anthropic':
-      return callAnthropic(apiKey, model || 'claude-sonnet-4-20250514', prompt);
+      return callAnthropicRaw(apiKey, model || 'claude-sonnet-4-20250514', prompt);
     case 'openai':
-      return callOpenAI(apiKey, model || 'gpt-4o', prompt);
+      return callOpenAIRaw(apiKey, model || 'gpt-4o', prompt);
     case 'gemini':
-      return callGemini(apiKey, model || 'gemini-2.0-flash', prompt);
+      return callGeminiRaw(apiKey, model || 'gemini-2.0-flash', prompt);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
 }
 
-async function callAnthropic(
+async function callAnthropicRaw(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<ExtractedSpec> {
+): Promise<string> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -305,7 +548,8 @@ async function callAnthropic(
   });
 
   if (!response.ok) {
-    throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`Anthropic API error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
   }
 
   const data = await response.json();
@@ -315,14 +559,14 @@ async function callAnthropic(
     throw new Error('No content in Anthropic response');
   }
 
-  return parseAIResponse(content);
+  return content;
 }
 
-async function callOpenAI(
+async function callOpenAIRaw(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<ExtractedSpec> {
+): Promise<string> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -337,7 +581,8 @@ async function callOpenAI(
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
   }
 
   const data = await response.json();
@@ -347,14 +592,14 @@ async function callOpenAI(
     throw new Error('No content in OpenAI response');
   }
 
-  return parseAIResponse(content);
+  return content;
 }
 
-async function callGemini(
+async function callGeminiRaw(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<ExtractedSpec> {
+): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
@@ -378,10 +623,14 @@ async function callGemini(
     throw new Error('No content in Gemini response');
   }
 
-  return parseAIResponse(content);
+  return content;
 }
 
-function parseAIResponse(rawOutput: string): ExtractedSpec {
+/**
+ * Parse raw AI response string into JSON object.
+ * Handles markdown code blocks that AI models often include.
+ */
+function parseAIResponse(rawOutput: string): unknown {
   // Handle potential markdown code blocks
   const jsonMatch = rawOutput.match(/```(?:json)?\s*([\s\S]*?)```/);
   const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawOutput.trim();
@@ -389,7 +638,7 @@ function parseAIResponse(rawOutput: string): ExtractedSpec {
   try {
     return JSON.parse(jsonStr);
   } catch (e) {
-    throw new Error(`Failed to parse AI response as JSON: ${e}`);
+    throw new Error(`Failed to parse AI response as JSON: ${e}\n\nRaw response:\n${rawOutput.slice(0, 500)}...`);
   }
 }
 

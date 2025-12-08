@@ -13,8 +13,8 @@ import { extractExpoRoutes } from './extractors/routes/expo.js';
 import { mergeSpecs } from './merger.js';
 import { calculateCoverage, formatCoverageReport } from './coverage.js';
 import { detectCycles, formatCyclesReport } from './cycle-detector.js';
-import type { GremlinSession, DeviceInfo, AppInfo } from '@gremlin/core';
-import { createSession, getOrCreateElement, EventTypeEnum } from '@gremlin/core';
+import type { GremlinSession, DeviceInfo, AppInfo } from '@gremlin/session';
+import { createSession, getOrCreateElement, EventTypeEnum } from '@gremlin/session';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

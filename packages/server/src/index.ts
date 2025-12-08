@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
-import type { GremlinSession } from '@gremlin/core/session/types';
+import type { GremlinSession } from '@gremlin/session';
 import type {
   Env,
   ErrorResponse,

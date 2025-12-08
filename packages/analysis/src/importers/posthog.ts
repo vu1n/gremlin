@@ -18,7 +18,7 @@ import type {
   InputEvent,
   NavigationEvent,
   ErrorEvent,
-} from '../session/types';
+} from '@gremlin/session';
 
 // ============================================================================
 // Configuration

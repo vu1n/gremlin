@@ -3,7 +3,7 @@
  */
 
 import type { GremlinSpecWithSources, StateWithSource, TransitionWithSource } from './merger.js';
-import type { StateId } from '@gremlin/core';
+import type { StateId } from '@gremlin/analysis';
 
 /**
  * Coverage information for a GremlinSpec

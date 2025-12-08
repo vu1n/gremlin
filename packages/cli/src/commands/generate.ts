@@ -6,13 +6,14 @@
 
 import { existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
-import type { GremlinSession, GremlinSpec } from '@gremlin/core';
+import type { GremlinSession } from '@gremlin/session';
+import type { GremlinSpec } from '@gremlin/analysis';
 import {
   analyzeFlows,
   generatePlaywrightTests,
   generateMaestroFlows,
   generateMaestroTestSuite,
-} from '@gremlin/core';
+} from '@gremlin/analysis';
 
 // ============================================================================
 // Types

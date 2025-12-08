@@ -4,7 +4,7 @@
  * Demonstrates how to interact with the Gremlin server API
  */
 
-import type { GremlinSession } from '@gremlin/core/session/types';
+import type { GremlinSession } from '@gremlin/session';
 import type {
   SessionUploadResponse,
   SessionListResult,

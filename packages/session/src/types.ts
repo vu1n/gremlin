@@ -26,6 +26,9 @@ export interface GremlinSession {
 
   /** Captured screenshots */
   screenshots: Screenshot[];
+
+  /** rrweb events for DOM replay (web only) */
+  rrwebEvents?: unknown[];
 }
 
 export interface SessionHeader {
@@ -341,6 +344,24 @@ export interface Screenshot {
 
   /** Previous screenshot ID if this is a diff */
   diffFromId?: string;
+}
+
+// ============================================================================
+// Analytics
+// ============================================================================
+
+/**
+ * Session analytics metadata for logging and future dashboard.
+ */
+export interface SessionAnalytics {
+  sessionId: string;
+  duration: number;
+  eventCount: number;
+  errorCount: number;
+  screens: string[];
+  platform: 'web' | 'ios' | 'android';
+  deviceInfo: Partial<DeviceInfo>;
+  timestamp: Date;
 }
 
 // ============================================================================

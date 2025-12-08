@@ -1,0 +1,42 @@
+{
+  "name": "@gremlin/session",
+  "version": "0.0.1",
+  "description": "Lightweight session recording types and transport for Gremlin",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./batcher": {
+      "import": "./dist/batcher.js",
+      "types": "./dist/batcher.d.ts"
+    },
+    "./recorder-base": {
+      "import": "./dist/recorder-base.js",
+      "types": "./dist/recorder-base.d.ts"
+    },
+    "./transport": {
+      "import": "./dist/transport/index.js",
+      "types": "./dist/transport/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "sideEffects": false,
+  "keywords": ["gremlin", "session", "recording", "testing"],
+  "license": "MIT"
+}

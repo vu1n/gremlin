@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import type { GremlinSession } from '@gremlin/core/session/types';
+import type { GremlinSession } from '@gremlin/session';
 import app from './index';
 
 // Mock environment for testing

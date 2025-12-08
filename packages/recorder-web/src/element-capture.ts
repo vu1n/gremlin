@@ -8,7 +8,7 @@
  * 4. CSS selector (fallback)
  */
 
-import type { ElementInfo, Rect } from '@gremlin/core';
+import type { ElementInfo, Rect } from '@gremlin/session';
 
 // Import ElementType specifically from session types to avoid ambiguity
 type ElementType =

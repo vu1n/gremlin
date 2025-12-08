@@ -8,18 +8,18 @@
 import React, { createContext, useContext, useRef, useState, useEffect, type ReactNode } from 'react';
 import { View, Platform, Dimensions, PixelRatio, AppState, type GestureResponderEvent, type AppStateStatus } from 'react-native';
 
-// Import shared types from @gremlin/core/session/types (avoid optimizer which uses Node zlib)
+// Import shared types from @gremlin/session
 import type {
   GremlinSession,
   DeviceInfo,
   AppInfo,
   ElementInfo,
-} from '@gremlin/core/session/types';
-import { BaseRecorder, type BaseRecorderConfig } from '@gremlin/core/session/recorder-base';
+} from '@gremlin/session';
+import { BaseRecorder, type BaseRecorderConfig } from '@gremlin/session';
 
 // Re-export types for consumers
 export type { GremlinSession, DeviceInfo, AppInfo, ElementInfo };
-export { EventTypeEnum } from '@gremlin/core/session/types';
+export { EventTypeEnum } from '@gremlin/session';
 
 // ============================================================================
 // Config

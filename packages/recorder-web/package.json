@@ -16,8 +16,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@gremlin/recorder-core": "workspace:*",
-    "rrweb": "^2.0.0-alpha.13"
+    "@gremlin/session": "workspace:*",
+    "rrweb": "^2.0.0-alpha.13",
+    "rrweb-player": "^2.0.0-alpha.13"
   },
   "devDependencies": {
     "@types/bun": "latest",

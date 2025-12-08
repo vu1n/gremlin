@@ -18,8 +18,8 @@ import type {
   InputEvent,
   NavigationEvent,
   ErrorEvent,
-} from '../session/types';
-import { EventTypeEnum } from '../session/types';
+} from '@gremlin/session';
+import { EventTypeEnum } from '@gremlin/session';
 
 // ============================================================================
 // RRWeb Types

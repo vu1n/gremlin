@@ -1,7 +1,7 @@
 /**
  * GremlinRecorder - Web session recorder
  *
- * Extends BaseRecorder from @gremlin/core for shared batching and event logic.
+ * Extends BaseRecorder from @gremlin/session for shared batching and event logic.
  * Adds web-specific features: rrweb DOM recording, DOM event listeners,
  * history API interception, and session persistence.
  */
@@ -15,9 +15,9 @@ import type {
   PerformanceSample,
   InputEvent,
   NavigationEvent,
-} from '@gremlin/core';
-import { BaseRecorder, type BaseRecorderConfig } from '@gremlin/core/session/recorder-base';
-import { EventTypeEnum } from '@gremlin/core/session/types';
+} from '@gremlin/session';
+import { BaseRecorder, type BaseRecorderConfig, LocalTransport, type LocalTransportConfig } from '@gremlin/session';
+import { EventTypeEnum } from '@gremlin/session';
 import { captureElement, findInteractiveElement } from './element-capture';
 
 // ============================================================================
@@ -29,7 +29,7 @@ export interface RecorderConfig extends BaseRecorderConfig {
   appName: string;
 
   /** App version */
-  appVersion: string;
+  appVersion?: string;
 
   /** Build number */
   appBuild?: string;
@@ -57,6 +57,23 @@ export interface RecorderConfig extends BaseRecorderConfig {
 
   /** Storage key for session persistence */
   storageKey?: string;
+
+  /** Capture rrweb events for replay (default: true) */
+  captureRrweb?: boolean;
+
+  /** Callback for rrweb events (for custom storage) */
+  onRrwebEvent?: (event: eventWithTime) => void;
+
+  /**
+   * Transport configuration for sending sessions.
+   * - 'local' (default): Auto-connects to gremlin dev on localhost:3334
+   * - LocalTransportConfig: Custom local transport config
+   * - false: Disable automatic transport (use exportForReplay() manually)
+   */
+  transport?: 'local' | LocalTransportConfig | false;
+
+  /** Auto-upload session when stopped (default: true when transport enabled) */
+  autoUpload?: boolean;
 }
 
 // ============================================================================
@@ -76,13 +93,16 @@ export class GremlinRecorder extends BaseRecorder {
   private static readonly DEFAULT_STORAGE_KEY = 'gremlin_session';
 
   private webConfig: RecorderConfig & {
+    appVersion: string;
     autoStart: boolean;
     capturePerformance: boolean;
     performanceInterval: number;
     maskInputs: boolean;
     persistSession: boolean;
     storageKey: string;
+    captureRrweb: boolean;
     rrwebOptions: Partial<recordOptions<eventWithTime>>;
+    autoUpload: boolean;
   };
 
   private stopRrweb: (() => void) | null = null;
@@ -91,6 +111,12 @@ export class GremlinRecorder extends BaseRecorder {
   private originalPushState: typeof history.pushState | null = null;
   private originalReplaceState: typeof history.replaceState | null = null;
 
+  /** rrweb events for session replay */
+  private rrwebEvents: eventWithTime[] = [];
+
+  /** Local transport for sending sessions to gremlin dev */
+  private transport: LocalTransport | null = null;
+
   constructor(config: RecorderConfig) {
     super({
       enableBatching: config.enableBatching ?? true,
@@ -98,16 +124,30 @@ export class GremlinRecorder extends BaseRecorder {
       debug: config.debug ?? false,
     });
 
+    // Determine if transport is enabled (default: 'local' in development)
+    const transportEnabled = config.transport !== false;
+    const transportConfig = config.transport === 'local' || config.transport === undefined
+      ? {}
+      : config.transport;
+
     this.webConfig = {
       ...config,
+      appVersion: config.appVersion ?? '0.0.1',
       autoStart: config.autoStart ?? false,
       capturePerformance: config.capturePerformance ?? true,
       performanceInterval: config.performanceInterval ?? 5000,
       maskInputs: config.maskInputs ?? true,
       persistSession: config.persistSession ?? false,
       storageKey: config.storageKey ?? GremlinRecorder.DEFAULT_STORAGE_KEY,
+      captureRrweb: config.captureRrweb ?? true,
       rrwebOptions: config.rrwebOptions ?? {},
+      autoUpload: config.autoUpload ?? transportEnabled,
     };
+
+    // Initialize transport (defaults to local on localhost:3334)
+    if (transportEnabled && typeof transportConfig === 'object') {
+      this.transport = new LocalTransport(transportConfig);
+    }
 
     if (this.webConfig.autoStart) {
       if (document.readyState === 'complete') {
@@ -228,13 +268,59 @@ export class GremlinRecorder extends BaseRecorder {
     const session = super.stop();
 
     if (session) {
+      // Add rrweb events to session for replay
+      (session as any).rrwebEvents = this.rrwebEvents;
+
       console.log(
         `GremlinRecorder: Stopped session ${session.header.sessionId} - ` +
-          `${session.events.length} events, ${session.elements.length} elements`
+          `${session.events.length} events, ${session.elements.length} elements, ` +
+          `${this.rrwebEvents.length} rrweb events`
       );
+
+      // Auto-upload if enabled
+      if (this.webConfig.autoUpload && this.transport) {
+        this.upload(session);
+      }
     }
 
     return session;
+  }
+
+  /**
+   * Upload a session to the configured transport.
+   * Called automatically on stop() if autoUpload is enabled.
+   */
+  public async upload(session?: GremlinSession): Promise<boolean> {
+    if (!this.transport) {
+      console.warn('GremlinRecorder: No transport configured');
+      return false;
+    }
+
+    const sessionToUpload = session || this.getSession();
+    if (!sessionToUpload) {
+      console.warn('GremlinRecorder: No session to upload');
+      return false;
+    }
+
+    // Add rrweb events to session
+    const fullSession = {
+      ...sessionToUpload,
+      rrwebEvents: this.rrwebEvents,
+    };
+
+    try {
+      const result = await this.transport.upload(fullSession as GremlinSession);
+      if (result.success) {
+        console.log(`GremlinRecorder: Session uploaded via ${result.method}`);
+        return true;
+      } else {
+        console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
+        return false;
+      }
+    } catch (err) {
+      console.error('GremlinRecorder: Upload error', err);
+      return false;
+    }
   }
 
   override destroy(): void {
@@ -267,15 +353,52 @@ export class GremlinRecorder extends BaseRecorder {
     return JSON.stringify(session, null, 2);
   }
 
+  /**
+   * Get rrweb events for replay.
+   * Returns a copy of the events array.
+   */
+  public getRrwebEvents(): eventWithTime[] {
+    return [...this.rrwebEvents];
+  }
+
+  /**
+   * Export full recording including rrweb events for replay.
+   * This is what you need to save for later session replay.
+   */
+  public exportForReplay(): { session: GremlinSession; rrwebEvents: eventWithTime[] } | null {
+    const session = this.getSession();
+    if (!session) return null;
+
+    return {
+      session,
+      rrwebEvents: this.getRrwebEvents(),
+    };
+  }
+
+  /**
+   * Export replay data as JSON string.
+   */
+  public exportReplayJson(): string | null {
+    const data = this.exportForReplay();
+    if (!data) return null;
+    return JSON.stringify(data, null, 2);
+  }
+
   // ========================================================================
   // rrweb Integration
   // ========================================================================
 
   private startRrwebRecording(): void {
+    // Clear previous rrweb events
+    this.rrwebEvents = [];
+
     const stopFn = record({
-      emit: () => {
-        // rrweb events stored separately for full DOM replay
-        // Our event stream focuses on user interactions for test generation
+      emit: (event: eventWithTime) => {
+        if (this.webConfig.captureRrweb) {
+          this.rrwebEvents.push(event);
+        }
+        // Also emit to callback if provided
+        this.webConfig.onRrwebEvent?.(event);
       },
       sampling: {
         scroll: 150,

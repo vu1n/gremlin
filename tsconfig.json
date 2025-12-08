@@ -17,9 +17,9 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
     "paths": {
-      "@gremlin/core": ["./packages/core/src"],
+      "@gremlin/session": ["./packages/session/src"],
+      "@gremlin/analysis": ["./packages/analysis/src"],
       "@gremlin/cli": ["./packages/cli/src"],
-      "@gremlin/recorder-core": ["./packages/recorder-core/src"],
       "@gremlin/recorder-web": ["./packages/recorder-web/src"],
       "@gremlin/recorder-react-native": ["./packages/recorder-react-native/src"],
       "@gremlin/proto": ["./packages/proto/src"],

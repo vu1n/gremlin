@@ -2,7 +2,7 @@
  * R2 storage layer for Gremlin sessions
  */
 
-import type { GremlinSession } from '@gremlin/core/session/types';
+import type { GremlinSession } from '@gremlin/session';
 import type { Env, SessionListResult, SessionSummary } from './types';
 import { createSessionSummary } from './types';
 

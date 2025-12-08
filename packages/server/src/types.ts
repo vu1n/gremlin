@@ -2,7 +2,7 @@
  * Cloudflare Workers environment types
  */
 
-import type { GremlinSession } from '@gremlin/core/session/types';
+import type { GremlinSession } from '@gremlin/session';
 
 // Cloudflare Workers R2 types (available in @cloudflare/workers-types)
 export interface R2ObjectBody {

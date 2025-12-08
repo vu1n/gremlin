@@ -24,7 +24,8 @@
     "expo-router"
   ],
   "dependencies": {
-    "@gremlin/core": "workspace:*"
+    "@gremlin/session": "workspace:*",
+    "@gremlin/analysis": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest"

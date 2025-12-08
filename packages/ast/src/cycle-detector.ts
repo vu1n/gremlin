@@ -2,9 +2,8 @@
  * Cycle Detector - Detect cycles in session navigation data
  */
 
-import type { GremlinSession } from '@gremlin/core';
-import { EventTypeEnum } from '@gremlin/core';
-import type { NavigationEvent } from '@gremlin/core';
+import type { GremlinSession, NavigationEvent } from '@gremlin/session';
+import { EventTypeEnum } from '@gremlin/session';
 
 /**
  * Type of cycle detected

@@ -3,24 +3,23 @@
  */
 
 import type { Route } from './types.js';
+import type { GremlinSession, NavigationEvent } from '@gremlin/session';
+import { EventTypeEnum } from '@gremlin/session';
 import type {
-  GremlinSession,
   GremlinSpec,
   State,
   StateId,
   Transition,
   TransitionEvent,
   EventType,
-} from '@gremlin/core';
+} from '@gremlin/analysis';
 import {
   createSpec,
   createState,
   createTransition,
   stateId,
   transitionId,
-  EventTypeEnum,
-} from '@gremlin/core';
-import type { NavigationEvent } from '@gremlin/core';
+} from '@gremlin/analysis';
 
 /**
  * Source tracking for states and transitions

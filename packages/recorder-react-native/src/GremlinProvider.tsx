@@ -9,7 +9,7 @@ import { View } from 'react-native';
 import { GremlinRecorder } from './recorder';
 import { createGestureHandlers } from './gesture-interceptor';
 import type { GremlinRecorderConfig, NavigationRef } from './types';
-import type { GremlinSession } from '@gremlin/core';
+import type { GremlinSession } from '@gremlin/session';
 
 interface GremlinContextValue {
   recorder: GremlinRecorder | null;

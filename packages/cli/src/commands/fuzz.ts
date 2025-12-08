@@ -6,8 +6,8 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import type { GremlinSpec, FuzzStrategy } from '@gremlin/core';
-import { generateFuzzTests, fuzzTestsToPlaywrightFile } from '@gremlin/core';
+import type { GremlinSpec, FuzzStrategy } from '@gremlin/analysis';
+import { generateFuzzTests, fuzzTestsToPlaywrightFile } from '@gremlin/analysis';
 
 // ============================================================================
 // Types

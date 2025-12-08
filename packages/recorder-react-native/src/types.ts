@@ -3,7 +3,7 @@
  */
 
 // Re-export core event type
-import type { GremlinEvent } from '@gremlin/core';
+import type { GremlinEvent } from '@gremlin/session';
 export type { GremlinEvent };
 
 /**

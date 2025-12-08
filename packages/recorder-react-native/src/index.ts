@@ -62,4 +62,4 @@ export type {
   AppInfo,
   ElementInfo,
   ElementType,
-} from '@gremlin/core';
+} from '@gremlin/session';

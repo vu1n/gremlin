@@ -1,0 +1,51 @@
+{
+  "name": "@gremlin/analysis",
+  "version": "0.0.1",
+  "description": "AI analysis and test generation for Gremlin (server-side only)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./ai": {
+      "import": "./dist/ai/index.js",
+      "types": "./dist/ai/index.d.ts"
+    },
+    "./generators": {
+      "import": "./dist/generators/index.js",
+      "types": "./dist/generators/index.d.ts"
+    },
+    "./spec": {
+      "import": "./dist/spec/index.js",
+      "types": "./dist/spec/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gremlin/session": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@google/generative-ai": "^0.24.1",
+    "openai": "^6.9.1"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true },
+    "@google/generative-ai": { "optional": true },
+    "openai": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "keywords": ["gremlin", "analysis", "testing", "ai", "playwright", "maestro"],
+  "license": "MIT"
+}

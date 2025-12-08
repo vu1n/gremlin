@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
+import { dev } from './commands/dev.ts';
 import { generate } from './commands/generate.ts';
 import { fuzz } from './commands/fuzz.ts';
+import { instrument } from './commands/instrument.ts';
+import { replay } from './commands/replay.ts';
 
 const program = new Command();
 
@@ -14,17 +17,38 @@ program
   .command('init')
   .description('Initialize Gremlin in current project')
   .action(() => {
-    console.log('🐸 Initializing Gremlin...');
+    console.log('Initializing Gremlin...');
     // TODO: Create .gremlin/ directory, config file
   });
 
 program
-  .command('record')
-  .description('Start recording a session')
-  .option('-o, --output <path>', 'Output path for session file')
-  .action((options) => {
-    console.log('🎬 Starting recording...', options);
-    // TODO: Start recording
+  .command('dev')
+  .description('Start local dev server to receive sessions from SDK')
+  .option('-p, --port <number>', 'Port for dev server', '3334')
+  .option('-o, --output <path>', 'Output directory for sessions', '.gremlin/sessions')
+  .option('-v, --verbose', 'Verbose logging')
+  .action(async (options) => {
+    await dev({
+      port: parseInt(options.port, 10),
+      output: options.output,
+      verbose: options.verbose ?? false,
+    });
+  });
+
+program
+  .command('replay')
+  .description('Replay a recorded session')
+  .argument('<session>', 'Path to session file')
+  .option('-p, --port <number>', 'Port for replay server', '3333')
+  .option('--speed <number>', 'Playback speed', '1')
+  .option('--no-autoplay', 'Disable auto-play')
+  .action(async (session, options) => {
+    await replay({
+      session,
+      port: parseInt(options.port, 10),
+      speed: parseFloat(options.speed),
+      autoPlay: options.autoplay !== false,
+    });
   });
 
 program
@@ -80,12 +104,24 @@ program
   });
 
 program
+  .command('instrument')
+  .description('Generate AI-friendly prompt for instrumenting your app')
+  .option('--framework <name>', 'Force framework (nextjs, vite, cra, remix, expo, react-native)')
+  .option('--llms', 'Output llms.txt format instead of prompt')
+  .action(async (options) => {
+    await instrument({
+      framework: options.framework,
+      format: options.llms ? 'llms' : 'prompt',
+    });
+  });
+
+program
   .command('run')
   .description('Run generated tests')
   .argument('[test]', 'Specific test to run')
   .option('--all', 'Run all tests')
   .action((test, options) => {
-    console.log('▶️ Running tests...', test, options);
+    console.log('Running tests...', test, options);
     // TODO: Run tests via Playwright/Maestro
   });
 
