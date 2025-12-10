@@ -7,6 +7,42 @@ import type { GremlinEvent } from '@gremlin/session';
 export type { GremlinEvent };
 
 /**
+ * Transport configuration for uploading sessions
+ */
+export interface TransportConfig {
+  /**
+   * Dev server endpoint.
+   * For RN on device/simulator, use your machine's IP: http://192.168.1.100:3334
+   * For iOS simulator on same machine, localhost works.
+   * Default: http://localhost:3334
+   */
+  endpoint?: string;
+
+  /**
+   * Fall back to AsyncStorage if server unavailable.
+   * Requires @react-native-async-storage/async-storage.
+   * Default: false
+   */
+  fallbackToStorage?: boolean;
+
+  /**
+   * Upload session automatically when recording stops.
+   * Default: true
+   */
+  autoUpload?: boolean;
+
+  /**
+   * Upload events in batches during recording (for long sessions).
+   * Interval in milliseconds. Set to 0 to disable.
+   * Default: 30000 (30 seconds)
+   */
+  batchInterval?: number;
+
+  /** Debug logging */
+  debug?: boolean;
+}
+
+/**
  * Configuration for the React Native recorder
  */
 export interface GremlinRecorderConfig {
@@ -21,6 +57,12 @@ export interface GremlinRecorderConfig {
 
   /** Auto-start recording on mount */
   autoStart?: boolean;
+
+  /**
+   * Transport config for uploading sessions.
+   * Set to false to disable transport entirely (manual export only).
+   */
+  transport?: TransportConfig | false;
 
   /** Sample performance metrics */
   capturePerformance?: boolean;

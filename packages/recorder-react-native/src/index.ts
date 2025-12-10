@@ -11,9 +11,11 @@ export const VERSION = '0.0.1';
 // Main exports
 export { GremlinRecorder } from './recorder';
 export { GremlinProvider, useGremlin, withGremlin } from './GremlinProvider';
+export { LocalTransport } from './transport';
 
 // Types
-export type { GremlinRecorderConfig, NavigationRef } from './types';
+export type { GremlinRecorderConfig, NavigationRef, TransportConfig } from './types';
+export type { TransportResult } from './transport';
 
 // Element capture utilities (for advanced usage)
 export {

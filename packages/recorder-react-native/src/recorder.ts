@@ -24,17 +24,19 @@ import { GestureInterceptor, type GestureEvent } from './gesture-interceptor';
 import { NavigationListener, type NavigationChange } from './navigation-listener';
 import { PerformanceMonitor } from './performance-monitor';
 import { captureElement, toElementInfo, findInteractiveParent } from './element-capture';
-import type { GremlinRecorderConfig, NavigationRef } from './types';
+import { LocalTransport, type TransportResult } from './transport';
+import type { GremlinRecorderConfig, NavigationRef, TransportConfig } from './types';
 
 /**
  * Main recorder class for React Native
  */
 export class GremlinRecorder {
   private config: Required<
-    Omit<GremlinRecorderConfig, 'appBuild' | 'onEvent' | 'navigationRef'>
+    Omit<GremlinRecorderConfig, 'appBuild' | 'onEvent' | 'navigationRef' | 'transport'>
   > & {
     appBuild?: string;
     onEvent?: (event: GremlinEvent) => void;
+    transport?: TransportConfig | false;
   };
 
   private session: GremlinSession | null = null;
@@ -45,6 +47,7 @@ export class GremlinRecorder {
   private gestureInterceptor: GestureInterceptor | null = null;
   private navigationListener: NavigationListener | null = null;
   private performanceMonitor: PerformanceMonitor | null = null;
+  private transport: LocalTransport | null = null;
 
   // App state tracking
   private appStateSubscription: any = null;
@@ -62,6 +65,7 @@ export class GremlinRecorder {
       appVersion: config.appVersion,
       appBuild: config.appBuild,
       autoStart: config.autoStart ?? false,
+      transport: config.transport,
       capturePerformance: config.capturePerformance ?? true,
       performanceInterval: config.performanceInterval ?? 5000,
       maskInputs: config.maskInputs ?? true,
@@ -73,6 +77,11 @@ export class GremlinRecorder {
       doubleTapDelay: config.doubleTapDelay ?? 300,
       scrollDebounce: config.scrollDebounce ?? 150,
     };
+
+    // Initialize transport if not disabled
+    if (config.transport !== false) {
+      this.transport = new LocalTransport(config.transport);
+    }
   }
 
   /**
@@ -88,6 +97,11 @@ export class GremlinRecorder {
     this.session = createSession(this.getDeviceInfo(), this.getAppInfo());
     this.lastEventTimestamp = this.session.header.startTime;
     this.isRecording = true;
+
+    // Start transport batching if enabled
+    if (this.transport) {
+      this.transport.startBatching(this.session.header.sessionId);
+    }
 
     // Setup gesture interception
     if (this.config.captureGestures) {
@@ -123,6 +137,97 @@ export class GremlinRecorder {
     }
 
     this.isRecording = false;
+
+    // Stop transport batching
+    if (this.transport) {
+      this.transport.stopBatching();
+    }
+
+    // Cleanup gesture interceptor
+    if (this.gestureInterceptor) {
+      this.gestureInterceptor.cleanup();
+      this.gestureInterceptor = null;
+    }
+
+    // Cleanup navigation listener
+    if (this.navigationListener) {
+      this.navigationListener.stop();
+      this.navigationListener = null;
+    }
+
+    // Cleanup performance monitor
+    if (this.performanceMonitor) {
+      this.performanceMonitor.stop();
+      this.performanceMonitor = null;
+    }
+
+    // Cleanup app state listener
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
+    }
+
+    // Clear scroll timer
+    if (this.scrollDebounceTimer) {
+      clearTimeout(this.scrollDebounceTimer);
+      this.scrollDebounceTimer = null;
+    }
+
+    // Set end time
+    this.session.header.endTime = Date.now();
+
+    const finalSession = this.session;
+    this.session = null;
+
+    console.log(
+      `GremlinRecorder: Stopped session ${finalSession.header.sessionId} - ` +
+        `${finalSession.events.length} events, ${finalSession.elements.length} elements`
+    );
+
+    // Auto-upload if transport is configured
+    if (this.transport) {
+      this.transport.upload(finalSession).then((result) => {
+        if (result.success) {
+          console.log(`GremlinRecorder: Session uploaded via ${result.method}`);
+        } else {
+          console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
+        }
+      });
+    }
+
+    return finalSession;
+  }
+
+  /**
+   * Stop recording and upload session (async version)
+   * Returns the upload result along with the session
+   */
+  public async stopAndUpload(): Promise<{ session: GremlinSession | null; uploadResult: TransportResult | null }> {
+    const session = this.stopWithoutUpload();
+
+    if (!session || !this.transport) {
+      return { session, uploadResult: null };
+    }
+
+    const uploadResult = await this.transport.upload(session);
+    return { session, uploadResult };
+  }
+
+  /**
+   * Stop recording without auto-upload (for manual handling)
+   */
+  public stopWithoutUpload(): GremlinSession | null {
+    if (!this.isRecording || !this.session) {
+      console.warn('GremlinRecorder: Not recording');
+      return null;
+    }
+
+    this.isRecording = false;
+
+    // Stop transport batching but don't upload
+    if (this.transport) {
+      this.transport.stopBatching();
+    }
 
     // Cleanup gesture interceptor
     if (this.gestureInterceptor) {
@@ -166,6 +271,25 @@ export class GremlinRecorder {
     );
 
     return finalSession;
+  }
+
+  /**
+   * Manually upload a session
+   */
+  public async uploadSession(session: GremlinSession): Promise<TransportResult | null> {
+    if (!this.transport) {
+      console.warn('GremlinRecorder: Transport not configured');
+      return null;
+    }
+    return this.transport.upload(session);
+  }
+
+  /**
+   * Check if dev server is available
+   */
+  public async checkServer(): Promise<boolean> {
+    if (!this.transport) return false;
+    return this.transport.checkServer();
   }
 
   /**
