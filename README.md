@@ -109,13 +109,39 @@ if (recorder.hasPersistentSession()) {
 
 ### 2. Setup Recording (React Native)
 
-> Note: React Native recorder is under active development. Check back soon!
-
 ```bash
 bun add @gremlin/recorder-react-native
 ```
 
-The React Native recorder will provide a similar API with gesture capture, view hierarchy recording, and native performance metrics.
+Add to your app:
+
+```typescript
+import { GremlinRecorder, LocalTransport } from '@gremlin/recorder-react-native';
+
+// Initialize recorder with auto-upload
+const recorder = new GremlinRecorder({
+  appName: 'my-app',
+  appVersion: '1.0.0',
+  capturePerformance: true,
+  transport: new LocalTransport({
+    endpoint: 'http://localhost:3334/sessions', // gremlin dev server
+  }),
+});
+
+// Start recording
+recorder.start();
+
+// The recorder automatically captures:
+// - Touch gestures (tap, swipe, long press)
+// - Text inputs
+// - Scroll events
+// - Navigation (React Navigation)
+// - Performance metrics (FPS, memory)
+// - Errors
+
+// Stop and upload session
+const session = recorder.stop();
+```
 
 ### 3. Generate Tests
 
@@ -166,14 +192,17 @@ gremlin fuzz \
 ### 5. Run Tests
 
 ```bash
-# Run Playwright tests
-npx playwright test .gremlin/tests/playwright
+# Run all generated tests via Gremlin CLI
+gremlin run
 
-# Run Maestro tests (React Native)
+# Or run specific frameworks directly
+npx playwright test .gremlin/tests/playwright
 maestro test .gremlin/tests/maestro
 
-# Or use Gremlin CLI (coming soon)
-gremlin run --all
+# Run with options
+gremlin run --headed              # Playwright in headed mode
+gremlin run --watch               # Playwright UI mode
+gremlin run --device "iPhone 15"  # Maestro on specific device
 ```
 
 ## Package Overview
@@ -185,23 +214,32 @@ Command-line interface for test generation and fuzzing. The main entry point for
 
 **Commands:**
 - `gremlin init` - Initialize project structure
-- `gremlin record` - Start/manage recordings (coming soon)
-- `gremlin import` - Import sessions from PostHog or files (coming soon)
+- `gremlin dev` - Start dev server to receive sessions from SDK
+- `gremlin import` - Import sessions from PostHog API or rrweb files
 - `gremlin generate` - Generate tests from sessions using AI
 - `gremlin fuzz` - Generate fuzz tests from state model
-- `gremlin run` - Run generated tests (coming soon)
-- `gremlin verify` - Verify properties against state model (coming soon)
+- `gremlin run` - Run generated Playwright/Maestro tests
+- `gremlin replay` - Replay recorded sessions
+- `gremlin instrument` - Generate instrumentation prompts for your app
 
-### [@gremlin/core](./packages/core)
-Core types, session management, AI analysis, and test generators. Used by both CLI and recorders.
+### [@gremlin/session](./packages/session)
+Lightweight client-side types and transport. Used by recorders - safe for browser bundling.
 
 **Exports:**
 - `GremlinSession` - Session recording format
+- `GremlinEvent` - Event types (tap, scroll, input, etc.)
+- `ElementInfo` - Element identification data
+- `EventBatcher` - Event batching utilities
+- `LocalTransport` - Session upload transport
+
+### [@gremlin/analysis](./packages/analysis)
+Server-side AI analysis and test generators. Heavy dependencies - NOT for client bundling.
+
+**Exports:**
 - `GremlinSpec` - State machine model types
 - `analyzeFlows()` - AI-powered flow analysis
 - `generatePlaywrightTests()` - Playwright test generator
 - `generateMaestroFlows()` - Maestro test generator
-- `optimizeSession()` - Session optimization utilities
 - Importers for rrweb, PostHog, and custom formats
 
 ### [@gremlin/recorder-web](./packages/recorder-web)
@@ -227,15 +265,16 @@ The recorder captures multiple identifiers for each element:
 This ensures generated tests are resilient to UI changes.
 
 ### [@gremlin/recorder-react-native](./packages/recorder-react-native)
-React Native session recorder for iOS and Android applications (under development).
+React Native session recorder for iOS and Android applications.
 
-**Planned Features:**
-- Touch gesture tracking (tap, swipe, long press)
+**Features:**
+- Touch gesture tracking (tap, swipe, long press, double-tap)
 - Input and scroll events
-- Navigation state capture
-- Element hierarchy recording
-- Performance monitoring
-- React context-based API
+- Navigation state capture (React Navigation integration)
+- View hierarchy recording with testID extraction
+- Performance monitoring (FPS, memory, JS thread)
+- Error reporting (native + JS exceptions)
+- LocalTransport for auto-upload to dev server
 
 ### [@gremlin/proto](./packages/proto)
 Protocol buffer definitions for efficient session serialization (future enhancement for binary format support).
@@ -319,29 +358,69 @@ gremlin fuzz \
 ```
 
 ### `gremlin import`
-Import sessions from external sources (coming soon).
+Import sessions from PostHog or local files.
 
 ```bash
-# Import from PostHog
-gremlin import --posthog
+gremlin import [options]
+```
 
-# Import from file
-gremlin import --file sessions.jsonl
+**Options:**
+- `--posthog` - Import from PostHog session recordings
+- `--file <path>` - Import from local rrweb JSON file
+- `--api-key <key>` - PostHog API key (or set `POSTHOG_API_KEY`)
+- `--project-id <id>` - PostHog project ID (or set `POSTHOG_PROJECT_ID`)
+- `--host <url>` - PostHog host (default: `https://app.posthog.com`)
+- `--recording-id <id>` - Import a specific recording
+- `--limit <number>` - Max recordings to import (default: `10`)
+- `--date-from <date>` - Filter: recordings after this date (ISO)
+- `--date-to <date>` - Filter: recordings before this date (ISO)
+- `-o, --output <path>` - Output directory (default: `.gremlin/sessions`)
+
+**Examples:**
+```bash
+# Import from PostHog (uses env vars)
+export POSTHOG_API_KEY="phx_..."
+export POSTHOG_PROJECT_ID="12345"
+gremlin import --posthog --limit 20
+
+# Import specific recording
+gremlin import --posthog --recording-id abc123
+
+# Import from local file
+gremlin import --file ./recording.json
 ```
 
 ### `gremlin run`
-Run generated tests (coming soon).
+Run generated Playwright and/or Maestro tests.
 
 ```bash
-gremlin run --all
-gremlin run specific-test.spec.ts
+gremlin run [test] [options]
 ```
 
-### `gremlin verify`
-Verify properties against the state model using formal methods (coming soon).
+**Arguments:**
+- `test` - Specific test file or pattern to run
 
+**Options:**
+- `--all` - Run all tests
+- `-d, --tests-dir <path>` - Tests directory (default: `.gremlin/tests`)
+- `--headed` - Run Playwright in headed mode
+- `--watch` - Run Playwright in UI/watch mode
+- `--update-snapshots` - Update Playwright snapshots
+- `--device <name>` - Maestro device to run on
+
+**Examples:**
 ```bash
-gremlin verify "Users can always access their profile"
+# Run all tests
+gremlin run
+
+# Run specific test
+gremlin run login.spec.ts
+
+# Run Playwright in headed mode
+gremlin run --headed
+
+# Run on specific Maestro device
+gremlin run --device "iPhone 15 Pro"
 ```
 
 ## Configuration
@@ -385,14 +464,14 @@ Create a `.gremlin/config.json` file to configure default behavior:
 
 ### Custom Test Generation
 
-Use the core library directly for custom test generation workflows:
+Use the analysis library directly for custom test generation workflows:
 
 ```typescript
 import {
   analyzeFlows,
   generatePlaywrightTests,
-  type GremlinSession
-} from '@gremlin/core';
+} from '@gremlin/analysis';
+import type { GremlinSession } from '@gremlin/session';
 
 // Load your sessions
 const sessions: GremlinSession[] = await loadSessionsFromDatabase();
@@ -420,16 +499,18 @@ await Bun.write('./tests/generated.spec.ts', testCode);
 
 ### Session Optimization
 
-Optimize sessions before analysis to reduce noise and improve AI performance:
+The EventBatcher in `@gremlin/session` optimizes events during recording:
 
 ```typescript
-import { optimizeSession } from '@gremlin/core';
+import { EventBatcher } from '@gremlin/session';
 
-const optimized = optimizeSession(rawSession, {
-  coalesceScrolls: true,    // Merge consecutive scrolls
-  dedupeTaps: true,         // Remove duplicate taps
-  removeNoise: true,        // Filter out noise events
+const batcher = new EventBatcher({
+  scrollBatchWindow: 150,  // Coalesce scrolls within 150ms
 });
+
+// Events are automatically batched during recording
+batcher.add(scrollEvent);
+const batched = batcher.flush();
 ```
 
 ### Real-time Session Streaming
@@ -479,7 +560,7 @@ Understand how elements are captured:
 Process multiple sessions efficiently:
 
 ```typescript
-import { analyzeFlows, generatePlaywrightTests } from '@gremlin/core';
+import { analyzeFlows, generatePlaywrightTests } from '@gremlin/analysis';
 import { readdirSync } from 'fs';
 import { join } from 'path';
 
@@ -799,15 +880,15 @@ bun run clean
 gremlin/
 ├── packages/
 │   ├── cli/                    # Command-line interface
-│   ├── core/                   # Core types and generators
+│   ├── session/                # Client-side types and transport
+│   ├── analysis/               # AI analysis and test generators
+│   ├── ast/                    # Code-based state discovery
 │   ├── recorder-web/           # Web recorder (rrweb)
 │   ├── recorder-react-native/  # React Native recorder
-│   ├── recorder-core/          # Shared recorder utilities
 │   ├── proto/                  # Protocol buffers
-│   └── server/                 # Session storage server
+│   └── server/                 # Session storage server (Cloudflare Worker)
 ├── examples/
-│   ├── web-app/               # Example web app
-│   └── expo-app/              # Example React Native app
+│   └── web-app/               # Example web app
 ├── package.json               # Root workspace config
 └── tsconfig.json              # TypeScript config
 ```
@@ -827,30 +908,30 @@ bun run --filter '@gremlin/cli' build
 
 **v0.1.0 - MVP** (Current)
 - [x] Web recorder with rrweb integration
-- [x] AI-powered flow analysis
+- [x] React Native recorder (gesture capture, performance, navigation)
+- [x] AI-powered flow analysis (Claude, GPT, Gemini)
 - [x] Playwright test generation
 - [x] Maestro test generation
 - [x] Fuzz test generation
 - [x] CLI interface
+- [x] PostHog import integration
+- [x] Session replay viewer
+- [x] Unified test runner (`gremlin run`)
 
 **v0.2.0 - Enhanced Recording**
-- [ ] React Native recorder implementation
-- [ ] PostHog import integration
-- [ ] Session replay UI
 - [ ] Chrome extension for zero-config recording
-- [ ] Real-time session streaming
+- [ ] Real-time session streaming improvements
+- [ ] Session diff and merge tools
 
 **v0.3.0 - Advanced Testing**
 - [ ] Visual regression testing
 - [ ] Property-based test generation
 - [ ] TLA+ formal verification
-- [ ] Multi-session diff and merge
-- [ ] Test maintenance and updates
+- [ ] Test maintenance automation
 
 **v1.0.0 - Production Ready**
 - [ ] CI/CD integrations
 - [ ] Performance optimizations
-- [ ] Documentation improvements
 - [ ] Enterprise features
 - [ ] Cloud hosting option
 
