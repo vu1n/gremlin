@@ -16,7 +16,14 @@ import type {
   InputEvent,
   NavigationEvent,
 } from '@gremlin/session';
-import { BaseRecorder, type BaseRecorderConfig, LocalTransport, type LocalTransportConfig } from '@gremlin/session';
+import {
+  BaseRecorder,
+  type BaseRecorderConfig,
+  LocalTransport,
+  type LocalTransportConfig,
+  StreamingTransport,
+  type StreamingTransportConfig,
+} from '@gremlin/session';
 import { EventTypeEnum } from '@gremlin/session';
 import { captureElement, findInteractiveElement } from './element-capture';
 
@@ -74,6 +81,15 @@ export interface RecorderConfig extends BaseRecorderConfig {
 
   /** Auto-upload session when stopped (default: true when transport enabled) */
   autoUpload?: boolean;
+
+  /**
+   * Enable streaming mode - events are sent to server in real-time.
+   * Only works with local transport. Great for local dev to avoid data loss.
+   * - true: Enable streaming with default 2s batch interval
+   * - StreamingTransportConfig: Custom streaming config
+   * - false (default): Batch upload on stop()
+   */
+  streaming?: boolean | StreamingTransportConfig;
 }
 
 // ============================================================================
@@ -117,6 +133,9 @@ export class GremlinRecorder extends BaseRecorder {
   /** Local transport for sending sessions to gremlin dev */
   private transport: LocalTransport | null = null;
 
+  /** Streaming transport for real-time event streaming */
+  private streamingTransport: StreamingTransport | null = null;
+
   constructor(config: RecorderConfig) {
     super({
       enableBatching: config.enableBatching ?? true,
@@ -147,6 +166,15 @@ export class GremlinRecorder extends BaseRecorder {
     // Initialize transport (defaults to local on localhost:3334)
     if (transportEnabled && typeof transportConfig === 'object') {
       this.transport = new LocalTransport(transportConfig);
+    }
+
+    // Initialize streaming transport if enabled
+    if (config.streaming) {
+      const streamingConfig = typeof config.streaming === 'object' ? config.streaming : {};
+      this.streamingTransport = new StreamingTransport({
+        debug: config.debug,
+        ...streamingConfig,
+      });
     }
 
     if (this.webConfig.autoStart) {
@@ -226,6 +254,12 @@ export class GremlinRecorder extends BaseRecorder {
     super.start();
     this.navigationStartTime = Date.now();
 
+    // Start streaming transport if enabled
+    const session = this.getSession();
+    if (this.streamingTransport && session) {
+      this.streamingTransport.start(session.header.sessionId);
+    }
+
     // Setup event listeners
     this.setupEventListeners();
 
@@ -237,14 +271,18 @@ export class GremlinRecorder extends BaseRecorder {
       this.startPerformanceSampling();
     }
 
-    const session = this.getSession();
-    console.log(`GremlinRecorder: Started session ${session?.header.sessionId}`);
+    console.log(`GremlinRecorder: Started session ${session?.header.sessionId}${this.streamingTransport ? ' (streaming)' : ''}`);
   }
 
   override stop(): GremlinSession | null {
     if (!this.isRecording()) {
       console.warn('GremlinRecorder: Not recording');
       return null;
+    }
+
+    // Stop streaming transport (flushes pending events)
+    if (this.streamingTransport) {
+      this.streamingTransport.stop();
     }
 
     // Stop rrweb
@@ -277,8 +315,8 @@ export class GremlinRecorder extends BaseRecorder {
           `${this.rrwebEvents.length} rrweb events`
       );
 
-      // Auto-upload if enabled
-      if (this.webConfig.autoUpload && this.transport) {
+      // Auto-upload if enabled (skip if streaming, already sent)
+      if (this.webConfig.autoUpload && this.transport && !this.streamingTransport) {
         this.upload(session);
       }
     }
@@ -385,6 +423,28 @@ export class GremlinRecorder extends BaseRecorder {
   }
 
   // ========================================================================
+  // Streaming Support
+  // ========================================================================
+
+  /**
+   * Override to also stream events when streaming is enabled.
+   */
+  protected override addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
+    // Call parent implementation
+    super.addEventToSession(event);
+
+    // Stream event if enabled
+    if (this.streamingTransport && this.isRecording()) {
+      // Get the last event (which was just added with dt)
+      const session = this.getSession();
+      if (session && session.events.length > 0) {
+        const lastEvent = session.events[session.events.length - 1];
+        this.streamingTransport.pushEvent(lastEvent);
+      }
+    }
+  }
+
+  // ========================================================================
   // rrweb Integration
   // ========================================================================
 
@@ -396,6 +456,10 @@ export class GremlinRecorder extends BaseRecorder {
       emit: (event: eventWithTime) => {
         if (this.webConfig.captureRrweb) {
           this.rrwebEvents.push(event);
+        }
+        // Stream rrweb event if enabled
+        if (this.streamingTransport) {
+          this.streamingTransport.pushRrwebEvent(event);
         }
         // Also emit to callback if provided
         this.webConfig.onRrwebEvent?.(event);
