@@ -176,3 +176,7 @@ dist
 
 # Claude Code config (local)
 .claude/
+
+# Tool configs (local)
+.bacchus/
+.gremlin/
