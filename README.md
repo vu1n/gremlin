@@ -265,6 +265,11 @@ Gremlin defaults are tuned for dev workflows:
 - SDK transports retry transient failures with backoff.
 - `gremlin sessions` lists recorded sessions quickly.
 
+## Agent Workflow
+
+Gremlin supports AI agent workflows via `gremlin instrument --llms`, which
+prints an `llms.txt` block with project-specific instrumentation guidance.
+
 ## Development
 
 ### Setup

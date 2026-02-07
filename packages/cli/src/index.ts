@@ -16,6 +16,23 @@ program
   .description('AI-powered test generation from real user sessions')
   .version('0.0.1');
 
+program.addHelpText(
+  'after',
+  `
+Dev workflow:
+  gremlin dev
+  gremlin sessions
+  gremlin replay latest
+  gremlin generate
+
+Agent workflow:
+  gremlin instrument --llms
+  gremlin dev
+  gremlin sessions
+  gremlin generate
+`
+);
+
 program
   .command('init')
   .description('Initialize Gremlin in current project')

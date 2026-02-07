@@ -1,12 +1,14 @@
 # Gremlin Agent Notes
 
-- Runtime: Bun workspace with packages under `packages/*`.
-- CLI local ingest: `gremlin dev` writes sessions to `.gremlin/sessions`.
-- Self-hosted server: `@gremlin/server-node` (Bun + Hono, filesystem storage).
-- Cloud server: `@gremlin/server` (Cloudflare Worker + R2).
-- Docker: `docker compose up --build` runs the self-hosted server.
+- Runtime: Bun workspace, packages in `packages/*`.
+- Local ingest: `gremlin dev`, sessions in `.gremlin/sessions`.
+- Self-hosted API: `@gremlin/server-node`, Bun + Hono, filesystem storage.
+- Cloud API: `@gremlin/server`, Cloudflare Worker + R2.
+- Docker: `docker compose up --build` runs self-hosted API.
 - Auth: `API_KEY` required unless `DISABLE_AUTH=true`.
-- Docker bootstraps API key when empty; logs `API_KEY=...` and stores `DATA_DIR/auth.json`.
+- Docker bootstrap: logs `API_KEY=...`, stores `DATA_DIR/auth.json`.
 - Data layout: `DATA_DIR/sessions/*.json`, `DATA_DIR/index.json`.
-- Use `bun run --filter '<package>' lint` for per-package linting.
-- Avoid touching `.gremlin/` in the repo; it is local state.
+- Health endpoints: `/health`, `/metrics` on dev and self-hosted server.
+- Session listing: `gremlin sessions`.
+- Linting: `bun run --filter '<package>' lint`.
+- Repo state: avoid `.gremlin/` edits, local-only.
