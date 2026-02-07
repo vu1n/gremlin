@@ -12,6 +12,7 @@ export const VERSION = '0.0.1';
 // Recorder
 export { GremlinRecorder, type RecorderConfig } from './recorder';
 export { captureElement, findInteractiveElement } from './element-capture';
+export { WebPerformanceMonitor, type WebPerformanceMonitorConfig } from './performance-monitor';
 
 // Replayer
 export {

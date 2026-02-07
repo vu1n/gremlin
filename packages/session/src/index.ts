@@ -33,6 +33,8 @@ export type {
   ErrorEvent,
   AppStateEvent,
   PerformanceSample,
+  WebVitals,
+  SessionPerformance,
   Screenshot,
   SessionAnalytics,
 } from './types';

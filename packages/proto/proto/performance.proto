@@ -3,7 +3,7 @@ syntax = "proto3";
 package gremlin;
 
 /**
- * Performance metrics sample
+ * Performance metrics sample (per-event)
  */
 message PerformanceSample {
   // Frames per second
@@ -17,4 +17,56 @@ message PerformanceSample {
 
   // Time since last navigation (ms)
   optional uint32 time_since_navigation = 4;
+
+  // Long tasks since last sample
+  optional uint32 long_task_count = 5;
+
+  // Total duration of long tasks since last sample (ms)
+  optional float long_task_total_duration = 6;
+}
+
+/**
+ * Web Vitals - session-scoped performance metrics
+ */
+message WebVitals {
+  // Largest Contentful Paint (ms)
+  optional float lcp = 1;
+
+  // Cumulative Layout Shift
+  optional float cls = 2;
+
+  // Interaction to Next Paint (ms)
+  optional float inp = 3;
+
+  // First Contentful Paint (ms)
+  optional float fcp = 4;
+
+  // Time to First Byte (ms)
+  optional float ttfb = 5;
+}
+
+/**
+ * Session-level performance summary
+ */
+message SessionPerformance {
+  // Web Vitals (web only)
+  optional WebVitals web_vitals = 1;
+
+  // Total long tasks in session
+  optional uint32 long_task_count = 2;
+
+  // Total duration of all long tasks (ms)
+  optional float long_task_total_duration = 3;
+
+  // Average FPS across session
+  optional float avg_fps = 4;
+
+  // Minimum FPS observed
+  optional float min_fps = 5;
+
+  // Peak memory usage (MB)
+  optional float peak_memory_usage = 6;
+
+  // Page load time (ms)
+  optional float page_load_time = 7;
 }

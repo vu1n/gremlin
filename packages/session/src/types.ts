@@ -29,6 +29,9 @@ export interface GremlinSession {
 
   /** rrweb events for DOM replay (web only) */
   rrwebEvents?: unknown[];
+
+  /** Session-level performance summary */
+  performance?: SessionPerformance;
 }
 
 export interface SessionHeader {
@@ -310,6 +313,58 @@ export interface PerformanceSample {
 
   /** Time since last navigation (ms) */
   timeSinceNavigation?: number;
+
+  /** Long tasks since last sample */
+  longTaskCount?: number;
+
+  /** Total duration of long tasks since last sample (ms) */
+  longTaskTotalDuration?: number;
+}
+
+/**
+ * Web Vitals - session-scoped performance metrics (one per page load).
+ */
+export interface WebVitals {
+  /** Largest Contentful Paint (ms) */
+  lcp?: number;
+
+  /** Cumulative Layout Shift */
+  cls?: number;
+
+  /** Interaction to Next Paint (ms) */
+  inp?: number;
+
+  /** First Contentful Paint (ms) */
+  fcp?: number;
+
+  /** Time to First Byte (ms) */
+  ttfb?: number;
+}
+
+/**
+ * Session-level performance summary.
+ */
+export interface SessionPerformance {
+  /** Web Vitals (web only) */
+  webVitals?: WebVitals;
+
+  /** Total long tasks in session */
+  longTaskCount?: number;
+
+  /** Total duration of all long tasks (ms) */
+  longTaskTotalDuration?: number;
+
+  /** Average FPS across session */
+  avgFps?: number;
+
+  /** Minimum FPS observed */
+  minFps?: number;
+
+  /** Peak memory usage (MB) */
+  peakMemoryUsage?: number;
+
+  /** Page load time (ms) */
+  pageLoadTime?: number;
 }
 
 // ============================================================================

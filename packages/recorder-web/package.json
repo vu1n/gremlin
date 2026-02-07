@@ -18,7 +18,8 @@
   "dependencies": {
     "@gremlin/session": "workspace:*",
     "rrweb": "^2.0.0-alpha.13",
-    "rrweb-player": "^2.0.0-alpha.13"
+    "rrweb-player": "^2.0.0-alpha.13",
+    "web-vitals": "^4.2.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

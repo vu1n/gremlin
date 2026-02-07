@@ -354,6 +354,29 @@ function formatSessionsForPrompt(sessions: GremlinSession[]): string {
     lines.push(`### Session ${i + 1}`);
     lines.push(`Device: ${session.header.device.platform} ${session.header.device.osVersion}`);
     lines.push(`App: ${session.header.app.name} v${session.header.app.version}`);
+
+    // Session-level performance summary
+    if (session.performance) {
+      const p = session.performance;
+      const parts: string[] = [];
+      if (p.webVitals) {
+        const wv = p.webVitals;
+        if (wv.lcp !== undefined) parts.push(`LCP=${wv.lcp}ms`);
+        if (wv.cls !== undefined) parts.push(`CLS=${wv.cls}`);
+        if (wv.inp !== undefined) parts.push(`INP=${wv.inp}ms`);
+        if (wv.fcp !== undefined) parts.push(`FCP=${wv.fcp}ms`);
+        if (wv.ttfb !== undefined) parts.push(`TTFB=${wv.ttfb}ms`);
+      }
+      if (p.avgFps !== undefined) parts.push(`avgFPS=${p.avgFps}`);
+      if (p.minFps !== undefined) parts.push(`minFPS=${p.minFps}`);
+      if (p.longTaskCount !== undefined) parts.push(`longTasks=${p.longTaskCount}`);
+      if (p.peakMemoryUsage !== undefined) parts.push(`peakMem=${p.peakMemoryUsage}MB`);
+      if (p.pageLoadTime !== undefined) parts.push(`pageLoad=${p.pageLoadTime}ms`);
+      if (parts.length > 0) {
+        lines.push(`Performance: ${parts.join(', ')}`);
+      }
+    }
+
     lines.push('');
     lines.push('Events:');
 
@@ -378,6 +401,16 @@ function formatEvent(
   const timeStr = `[${(timestamp / 1000).toFixed(1)}s]`;
   const data = event.data;
 
+  // Build perf suffix if performance data is present
+  let perfSuffix = '';
+  if (event.perf) {
+    const parts: string[] = [];
+    if (event.perf.fps !== undefined) parts.push(`fps=${event.perf.fps}`);
+    if (event.perf.jsThreadLag !== undefined && event.perf.jsThreadLag > 50) parts.push(`lag=${event.perf.jsThreadLag}ms`);
+    if (event.perf.longTaskCount !== undefined && event.perf.longTaskCount > 0) parts.push(`longTasks=${event.perf.longTaskCount}`);
+    if (parts.length > 0) perfSuffix = ` [perf: ${parts.join(', ')}]`;
+  }
+
   if ('kind' in data) {
     switch (data.kind) {
       case 'tap':
@@ -389,41 +422,41 @@ function formatEvent(
         const elementStr = element
           ? `${element.testId || element.accessibilityLabel || element.text || 'unknown'} (${element.type})`
           : `(${data.x}, ${data.y})`;
-        return `${timeStr} ${data.kind.toUpperCase()}: ${elementStr}`;
+        return `${timeStr} ${data.kind.toUpperCase()}: ${elementStr}${perfSuffix}`;
       }
 
       case 'swipe':
-        return `${timeStr} SWIPE: ${data.direction} (${data.duration}ms)`;
+        return `${timeStr} SWIPE: ${data.direction} (${data.duration}ms)${perfSuffix}`;
 
       case 'scroll':
-        return `${timeStr} SCROLL: deltaY=${data.deltaY}`;
+        return `${timeStr} SCROLL: deltaY=${data.deltaY}${perfSuffix}`;
 
       case 'input': {
         const inputElement = data.elementIndex !== undefined
           ? session.elements[data.elementIndex]
           : null;
         const inputTarget = inputElement?.testId || inputElement?.accessibilityLabel || 'unknown';
-        return `${timeStr} INPUT: ${inputTarget} = "${data.masked ? '***' : data.value}"`;
+        return `${timeStr} INPUT: ${inputTarget} = "${data.masked ? '***' : data.value}"${perfSuffix}`;
       }
 
       case 'navigation':
-        return `${timeStr} NAVIGATE: ${data.navType} → ${data.screen}`;
+        return `${timeStr} NAVIGATE: ${data.navType} → ${data.screen}${perfSuffix}`;
 
       case 'network':
-        return `${timeStr} NETWORK: ${data.method} ${data.url} (${data.phase})`;
+        return `${timeStr} NETWORK: ${data.method} ${data.url} (${data.phase})${perfSuffix}`;
 
       case 'error':
-        return `${timeStr} ERROR: ${data.message}`;
+        return `${timeStr} ERROR: ${data.message}${perfSuffix}`;
 
       case 'app_state':
-        return `${timeStr} APP_STATE: ${data.state}`;
+        return `${timeStr} APP_STATE: ${data.state}${perfSuffix}`;
 
       default:
-        return `${timeStr} UNKNOWN: ${JSON.stringify(data)}`;
+        return `${timeStr} UNKNOWN: ${JSON.stringify(data)}${perfSuffix}`;
     }
   }
 
-  return `${timeStr} EVENT: ${JSON.stringify(data)}`;
+  return `${timeStr} EVENT: ${JSON.stringify(data)}${perfSuffix}`;
 }
 
 // ============================================================================

@@ -464,6 +464,7 @@ export class GremlinRecorder {
           errorType: 'js',
           fatal: false,
         } as ErrorEvent,
+        perf: this.capturePerformance(),
       };
 
       this.addEventToSession(errorEvent);
@@ -564,6 +565,7 @@ export class GremlinRecorder {
         kind: 'app_state',
         state: nextAppState as 'active' | 'background' | 'inactive',
       } as AppStateEvent,
+      perf: this.capturePerformance(),
     };
 
     this.addEventToSession(appStateEvent);
@@ -580,6 +582,7 @@ export class GremlinRecorder {
         deltaY: Math.round(y),
         containerIndex,
       } as ScrollEvent,
+      perf: this.capturePerformance(),
     };
 
     this.addEventToSession(scrollEvent);

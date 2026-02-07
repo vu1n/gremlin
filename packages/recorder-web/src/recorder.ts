@@ -12,7 +12,6 @@ import type {
   GremlinEvent,
   DeviceInfo,
   AppInfo,
-  PerformanceSample,
   InputEvent,
   NavigationEvent,
 } from '@gremlin/session';
@@ -26,6 +25,7 @@ import {
 } from '@gremlin/session';
 import { EventTypeEnum } from '@gremlin/session';
 import { captureElement, findInteractiveElement } from './element-capture';
+import { WebPerformanceMonitor } from './performance-monitor';
 
 // ============================================================================
 // Config
@@ -124,6 +124,7 @@ export class GremlinRecorder extends BaseRecorder {
   private stopRrweb: (() => void) | null = null;
   private performanceTimer: number | null = null;
   private navigationStartTime = 0;
+  private performanceMonitor: WebPerformanceMonitor | null = null;
   private originalPushState: typeof history.pushState | null = null;
   private originalReplaceState: typeof history.replaceState | null = null;
 
@@ -280,6 +281,9 @@ export class GremlinRecorder extends BaseRecorder {
       return null;
     }
 
+    // Capture session-level performance before stopping the monitor
+    let sessionPerformance = this.performanceMonitor?.getSessionPerformance();
+
     // Stop streaming transport (flushes pending events)
     if (this.streamingTransport) {
       this.streamingTransport.stop();
@@ -297,6 +301,12 @@ export class GremlinRecorder extends BaseRecorder {
       this.performanceTimer = null;
     }
 
+    // Stop performance monitor
+    if (this.performanceMonitor) {
+      this.performanceMonitor.stop();
+      this.performanceMonitor = null;
+    }
+
     // Remove event listeners
     this.removeEventListeners();
 
@@ -306,6 +316,11 @@ export class GremlinRecorder extends BaseRecorder {
     const session = super.stop();
 
     if (session) {
+      // Add session-level performance data
+      if (sessionPerformance) {
+        session.performance = sessionPerformance;
+      }
+
       // Add rrweb events to session for replay
       (session as any).rrwebEvents = this.rrwebEvents;
 
@@ -370,6 +385,10 @@ export class GremlinRecorder extends BaseRecorder {
       clearInterval(this.performanceTimer);
       this.performanceTimer = null;
     }
+    if (this.performanceMonitor) {
+      this.performanceMonitor.stop();
+      this.performanceMonitor = null;
+    }
     this.removeEventListeners();
     this.restoreHistoryApi();
     super.destroy();
@@ -427,11 +446,17 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   /**
-   * Override to also stream events when streaming is enabled.
+   * Override to auto-attach performance data and stream events.
    */
   protected override addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
+    // Auto-attach perf sample if monitor is active and event doesn't already have one
+    let enrichedEvent = event;
+    if (this.performanceMonitor && !event.perf) {
+      enrichedEvent = { ...event, perf: this.performanceMonitor.getCurrentSample() };
+    }
+
     // Call parent implementation
-    super.addEventToSession(event);
+    super.addEventToSession(enrichedEvent);
 
     // Stream event if enabled
     if (this.streamingTransport && this.isRecording()) {
@@ -601,6 +626,7 @@ export class GremlinRecorder extends BaseRecorder {
     if (!this.isRecording()) return;
 
     this.navigationStartTime = Date.now();
+    this.performanceMonitor?.markNavigation();
     this.recordNavigation(document.title, 'push', { url: window.location.href });
   }
 
@@ -676,8 +702,17 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   private startPerformanceSampling(): void {
+    this.performanceMonitor = new WebPerformanceMonitor({
+      trackFPS: true,
+      trackLongTasks: true,
+      trackWebVitals: true,
+      trackMemory: true,
+    });
+    this.performanceMonitor.start();
+
+    // Keep the timer for backward compatibility (config.performanceInterval)
     this.performanceTimer = window.setInterval(() => {
-      // Performance sampling happens during other events
+      // Per-event perf is auto-attached in addEventToSession
     }, this.webConfig.performanceInterval);
   }
 

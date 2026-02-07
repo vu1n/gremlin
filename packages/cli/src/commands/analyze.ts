@@ -175,6 +175,29 @@ function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
     lines.push(`- App: ${session.header.app?.name || 'unknown'} v${session.header.app?.version || '?'}`);
     lines.push(`- Events: ${events.length}`);
     lines.push(`- Duration: ${duration.toFixed(1)}s`);
+
+    // Session-level performance summary
+    const perf = (session as any).performance;
+    if (perf) {
+      const parts: string[] = [];
+      if (perf.webVitals) {
+        const wv = perf.webVitals;
+        if (wv.lcp !== undefined) parts.push(`LCP=${wv.lcp}ms`);
+        if (wv.cls !== undefined) parts.push(`CLS=${wv.cls}`);
+        if (wv.inp !== undefined) parts.push(`INP=${wv.inp}ms`);
+        if (wv.fcp !== undefined) parts.push(`FCP=${wv.fcp}ms`);
+        if (wv.ttfb !== undefined) parts.push(`TTFB=${wv.ttfb}ms`);
+      }
+      if (perf.avgFps !== undefined) parts.push(`avgFPS=${perf.avgFps}`);
+      if (perf.minFps !== undefined) parts.push(`minFPS=${perf.minFps}`);
+      if (perf.longTaskCount !== undefined) parts.push(`longTasks=${perf.longTaskCount}`);
+      if (perf.peakMemoryUsage !== undefined) parts.push(`peakMem=${perf.peakMemoryUsage}MB`);
+      if (perf.pageLoadTime !== undefined) parts.push(`pageLoad=${perf.pageLoadTime}ms`);
+      if (parts.length > 0) {
+        lines.push(`- Performance: ${parts.join(', ')}`);
+      }
+    }
+
     lines.push('');
     lines.push('Events:');
 
@@ -184,6 +207,16 @@ function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
       const timeStr = `[${(timestamp / 1000).toFixed(1)}s]`;
       const data = event.data;
 
+      // Build perf suffix if performance data is present
+      let perfSuffix = '';
+      if (event.perf) {
+        const pp: string[] = [];
+        if (event.perf.fps !== undefined) pp.push(`fps=${event.perf.fps}`);
+        if (event.perf.jsThreadLag !== undefined && event.perf.jsThreadLag > 50) pp.push(`lag=${event.perf.jsThreadLag}ms`);
+        if (event.perf.longTaskCount !== undefined && event.perf.longTaskCount > 0) pp.push(`longTasks=${event.perf.longTaskCount}`);
+        if (pp.length > 0) perfSuffix = ` [perf: ${pp.join(', ')}]`;
+      }
+
       if ('kind' in data) {
         switch (data.kind) {
           case 'tap':
@@ -191,26 +224,26 @@ function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
           case 'long_press': {
             const el = data.elementIndex !== undefined ? session.elements?.[data.elementIndex] : null;
             const target = el ? (el.testId || el.accessibilityLabel || el.text || 'unknown') : `(${data.x}, ${data.y})`;
-            lines.push(`  ${timeStr} ${data.kind.toUpperCase()}: ${target}`);
+            lines.push(`  ${timeStr} ${data.kind.toUpperCase()}: ${target}${perfSuffix}`);
             break;
           }
           case 'input': {
             const el = data.elementIndex !== undefined ? session.elements?.[data.elementIndex] : null;
             const target = el?.testId || el?.accessibilityLabel || 'unknown';
-            lines.push(`  ${timeStr} INPUT: ${target} = "${data.masked ? '***' : data.value}"`);
+            lines.push(`  ${timeStr} INPUT: ${target} = "${data.masked ? '***' : data.value}"${perfSuffix}`);
             break;
           }
           case 'navigation':
-            lines.push(`  ${timeStr} NAVIGATE: ${data.navType} → ${data.screen}`);
+            lines.push(`  ${timeStr} NAVIGATE: ${data.navType} → ${data.screen}${perfSuffix}`);
             break;
           case 'error':
-            lines.push(`  ${timeStr} ERROR: ${data.message}`);
+            lines.push(`  ${timeStr} ERROR: ${data.message}${perfSuffix}`);
             break;
           case 'network':
-            lines.push(`  ${timeStr} NETWORK: ${data.method} ${data.url} (${data.phase})`);
+            lines.push(`  ${timeStr} NETWORK: ${data.method} ${data.url} (${data.phase})${perfSuffix}`);
             break;
           default:
-            lines.push(`  ${timeStr} ${data.kind?.toUpperCase?.() || 'EVENT'}`);
+            lines.push(`  ${timeStr} ${data.kind?.toUpperCase?.() || 'EVENT'}${perfSuffix}`);
         }
       }
     }
@@ -225,7 +258,7 @@ function buildAnalysisPrompt(sessionsData: string, focus: string): string {
   const focusInstructions: Record<string, string> = {
     ux: 'Focus primarily on UX issues: confusing flows, dead ends, excessive steps, unclear navigation.',
     errors: 'Focus primarily on errors: JavaScript errors, network failures, crash patterns, error recovery.',
-    performance: 'Focus primarily on performance: slow interactions, long load times, excessive network calls.',
+    performance: 'Focus primarily on performance: Web Vitals (LCP, CLS, INP, FCP, TTFB), long tasks, FPS drops during interactions, memory usage, page load time, and slow network calls.',
     all: 'Analyze all aspects: UX issues, errors, performance, and general user behavior patterns.',
   };
 

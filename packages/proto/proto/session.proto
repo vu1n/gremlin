@@ -4,6 +4,7 @@ package gremlin;
 
 import "elements.proto";
 import "events.proto";
+import "performance.proto";
 
 /**
  * A recorded user session.
@@ -20,6 +21,9 @@ message GremlinSession {
 
   // Captured screenshots
   repeated Screenshot screenshots = 4;
+
+  // Session-level performance summary
+  optional SessionPerformance performance = 5;
 }
 
 /**
