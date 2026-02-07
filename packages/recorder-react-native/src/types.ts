@@ -93,6 +93,12 @@ export interface GremlinRecorderConfig {
 
   /** Debounce scroll events (ms) */
   scrollDebounce?: number;
+
+  /** Capture network requests (fetch and XHR) (default: true) */
+  captureNetwork?: boolean;
+
+  /** URL patterns to ignore for network capture (substring match) */
+  networkIgnorePatterns?: string[];
 }
 
 /**

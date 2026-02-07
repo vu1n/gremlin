@@ -447,12 +447,12 @@ function emitFlowSteps(
 // Fingerprinting & Normalization
 // ============================================================================
 
-function computeFingerprint(message: string, errorType: string): string {
+export function computeFingerprint(message: string, errorType: string): string {
   const normalized = normalizeMessage(message);
   return `${errorType}:${normalized}`;
 }
 
-function normalizeMessage(message: string): string {
+export function normalizeMessage(message: string): string {
   return (
     message
       // Strip UUIDs

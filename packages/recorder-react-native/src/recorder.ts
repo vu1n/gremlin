@@ -1,25 +1,23 @@
 /**
  * GremlinRecorder - React Native session recorder
  *
- * Captures user gestures, navigation, and element info to produce GremlinSession data.
+ * Extends BaseRecorder from @gremlin/session for shared batching,
+ * element deduplication, and delta-encoded timestamps.
+ * Adds RN-specific features: gesture interception, navigation tracking,
+ * performance monitoring, app state tracking, network capture, and error capture.
  */
 
 import { Platform, Dimensions, AppState, type AppStateStatus, NativeModules } from 'react-native';
 import type {
   GremlinSession,
   GremlinEvent,
-  EventTypeEnum,
   TapEvent,
   SwipeEvent,
-  ScrollEvent,
-  NavigationEvent,
-  AppStateEvent,
-  ErrorEvent,
+  NetworkEvent,
   DeviceInfo,
   AppInfo,
-  PerformanceSample,
 } from '@gremlin/session';
-import { createSession, getOrCreateElement, addEvent } from '@gremlin/session';
+import { BaseRecorder, type BaseRecorderConfig, EventTypeEnum } from '@gremlin/session';
 import { GestureInterceptor, type GestureEvent } from './gesture-interceptor';
 import { NavigationListener, type NavigationChange } from './navigation-listener';
 import { PerformanceMonitor } from './performance-monitor';
@@ -27,21 +25,25 @@ import { captureElement, toElementInfo, findInteractiveParent } from './element-
 import { LocalTransport, type TransportResult } from './transport';
 import type { GremlinRecorderConfig, NavigationRef, TransportConfig } from './types';
 
+// ErrorUtils is a global in React Native but not typed
+declare const ErrorUtils: {
+  getGlobalHandler: () => (error: Error, isFatal?: boolean) => void;
+  setGlobalHandler: (handler: (error: Error, isFatal?: boolean) => void) => void;
+};
+
 /**
- * Main recorder class for React Native
+ * Main recorder class for React Native.
+ * Extends BaseRecorder for shared session lifecycle, event batching,
+ * element deduplication, and delta timestamps.
  */
-export class GremlinRecorder {
-  private config: Required<
+export class GremlinRecorder extends BaseRecorder {
+  private rnConfig: Required<
     Omit<GremlinRecorderConfig, 'appBuild' | 'onEvent' | 'navigationRef' | 'transport'>
   > & {
     appBuild?: string;
     onEvent?: (event: GremlinEvent) => void;
     transport?: TransportConfig | false;
   };
-
-  private session: GremlinSession | null = null;
-  private isRecording = false;
-  private lastEventTimestamp = 0;
 
   // Sub-modules
   private gestureInterceptor: GestureInterceptor | null = null;
@@ -52,15 +54,23 @@ export class GremlinRecorder {
   // App state tracking
   private appStateSubscription: any = null;
 
-  // Error tracking
-  private errorHandler: ((error: Error) => void) | null = null;
+  // Error tracking - saved previous handler for restore on stop
+  private previousErrorHandler: ((error: Error, isFatal?: boolean) => void) | null = null;
 
-  // Scroll tracking
-  private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastScrollPosition = { x: 0, y: 0 };
+  // Network interception
+  private originalFetch: typeof globalThis.fetch | null = null;
+  private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
+  private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
+  private networkRequestCounter = 0;
 
   constructor(config: GremlinRecorderConfig) {
-    this.config = {
+    super({
+      enableBatching: true,
+      scrollBatchWindow: config.scrollDebounce ?? 150,
+      debug: false,
+    } satisfies BaseRecorderConfig);
+
+    this.rnConfig = {
       appName: config.appName,
       appVersion: config.appVersion,
       appBuild: config.appBuild,
@@ -76,6 +86,8 @@ export class GremlinRecorder {
       longPressDuration: config.longPressDuration ?? 500,
       doubleTapDelay: config.doubleTapDelay ?? 300,
       scrollDebounce: config.scrollDebounce ?? 150,
+      captureNetwork: config.captureNetwork ?? true,
+      networkIgnorePatterns: config.networkIgnorePatterns ?? [],
     };
 
     // Initialize transport if not disabled
@@ -84,262 +96,11 @@ export class GremlinRecorder {
     }
   }
 
-  /**
-   * Start recording session
-   */
-  public start(navigationRef?: NavigationRef): void {
-    if (this.isRecording) {
-      console.warn('GremlinRecorder: Already recording');
-      return;
-    }
-
-    // Create session
-    this.session = createSession(this.getDeviceInfo(), this.getAppInfo());
-    this.lastEventTimestamp = this.session.header.startTime;
-    this.isRecording = true;
-
-    // Start transport batching if enabled
-    if (this.transport) {
-      this.transport.startBatching(this.session.header.sessionId);
-    }
-
-    // Setup gesture interception
-    if (this.config.captureGestures) {
-      this.setupGestureInterceptor();
-    }
-
-    // Setup navigation listener
-    if (this.config.captureNavigation && navigationRef) {
-      this.setupNavigationListener(navigationRef);
-    }
-
-    // Setup performance monitor
-    if (this.config.capturePerformance) {
-      this.setupPerformanceMonitor();
-    }
-
-    // Setup app state listener
-    this.setupAppStateListener();
-
-    // Setup error tracking
-    this.setupErrorTracking();
-
-    console.log(`GremlinRecorder: Started session ${this.session.header.sessionId}`);
-  }
-
-  /**
-   * Stop recording and return session
-   */
-  public stop(): GremlinSession | null {
-    if (!this.isRecording || !this.session) {
-      console.warn('GremlinRecorder: Not recording');
-      return null;
-    }
-
-    this.isRecording = false;
-
-    // Stop transport batching
-    if (this.transport) {
-      this.transport.stopBatching();
-    }
-
-    // Cleanup gesture interceptor
-    if (this.gestureInterceptor) {
-      this.gestureInterceptor.cleanup();
-      this.gestureInterceptor = null;
-    }
-
-    // Cleanup navigation listener
-    if (this.navigationListener) {
-      this.navigationListener.stop();
-      this.navigationListener = null;
-    }
-
-    // Cleanup performance monitor
-    if (this.performanceMonitor) {
-      this.performanceMonitor.stop();
-      this.performanceMonitor = null;
-    }
-
-    // Cleanup app state listener
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-      this.appStateSubscription = null;
-    }
-
-    // Clear scroll timer
-    if (this.scrollDebounceTimer) {
-      clearTimeout(this.scrollDebounceTimer);
-      this.scrollDebounceTimer = null;
-    }
-
-    // Set end time
-    this.session.header.endTime = Date.now();
-
-    const finalSession = this.session;
-    this.session = null;
-
-    console.log(
-      `GremlinRecorder: Stopped session ${finalSession.header.sessionId} - ` +
-        `${finalSession.events.length} events, ${finalSession.elements.length} elements`
-    );
-
-    // Auto-upload if transport is configured
-    if (this.transport) {
-      this.transport.upload(finalSession).then((result) => {
-        if (result.success) {
-          console.log(`GremlinRecorder: Session uploaded via ${result.method}`);
-        } else {
-          console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
-        }
-      });
-    }
-
-    return finalSession;
-  }
-
-  /**
-   * Stop recording and upload session (async version)
-   * Returns the upload result along with the session
-   */
-  public async stopAndUpload(): Promise<{ session: GremlinSession | null; uploadResult: TransportResult | null }> {
-    const session = this.stopWithoutUpload();
-
-    if (!session || !this.transport) {
-      return { session, uploadResult: null };
-    }
-
-    const uploadResult = await this.transport.upload(session);
-    return { session, uploadResult };
-  }
-
-  /**
-   * Stop recording without auto-upload (for manual handling)
-   */
-  public stopWithoutUpload(): GremlinSession | null {
-    if (!this.isRecording || !this.session) {
-      console.warn('GremlinRecorder: Not recording');
-      return null;
-    }
-
-    this.isRecording = false;
-
-    // Stop transport batching but don't upload
-    if (this.transport) {
-      this.transport.stopBatching();
-    }
-
-    // Cleanup gesture interceptor
-    if (this.gestureInterceptor) {
-      this.gestureInterceptor.cleanup();
-      this.gestureInterceptor = null;
-    }
-
-    // Cleanup navigation listener
-    if (this.navigationListener) {
-      this.navigationListener.stop();
-      this.navigationListener = null;
-    }
-
-    // Cleanup performance monitor
-    if (this.performanceMonitor) {
-      this.performanceMonitor.stop();
-      this.performanceMonitor = null;
-    }
-
-    // Cleanup app state listener
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-      this.appStateSubscription = null;
-    }
-
-    // Clear scroll timer
-    if (this.scrollDebounceTimer) {
-      clearTimeout(this.scrollDebounceTimer);
-      this.scrollDebounceTimer = null;
-    }
-
-    // Set end time
-    this.session.header.endTime = Date.now();
-
-    const finalSession = this.session;
-    this.session = null;
-
-    console.log(
-      `GremlinRecorder: Stopped session ${finalSession.header.sessionId} - ` +
-        `${finalSession.events.length} events, ${finalSession.elements.length} elements`
-    );
-
-    return finalSession;
-  }
-
-  /**
-   * Manually upload a session
-   */
-  public async uploadSession(session: GremlinSession): Promise<TransportResult | null> {
-    if (!this.transport) {
-      console.warn('GremlinRecorder: Transport not configured');
-      return null;
-    }
-    return this.transport.upload(session);
-  }
-
-  /**
-   * Check if dev server is available
-   */
-  public async checkServer(): Promise<boolean> {
-    if (!this.transport) return false;
-    return this.transport.checkServer();
-  }
-
-  /**
-   * Get current session (without stopping)
-   */
-  public getSession(): GremlinSession | null {
-    return this.session;
-  }
-
-  /**
-   * Check if currently recording
-   */
-  public isActive(): boolean {
-    return this.isRecording;
-  }
-
-  /**
-   * Get gesture interceptor (for use with GremlinProvider)
-   */
-  public getGestureInterceptor(): GestureInterceptor | null {
-    return this.gestureInterceptor;
-  }
-
-  /**
-   * Record a scroll event manually
-   */
-  public recordScroll(x: number, y: number, containerIndex?: number): void {
-    if (!this.session) return;
-
-    // Debounce scroll events
-    if (this.scrollDebounceTimer) {
-      clearTimeout(this.scrollDebounceTimer);
-    }
-
-    this.lastScrollPosition = { x, y };
-
-    this.scrollDebounceTimer = setTimeout(() => {
-      this.recordScrollEvent(
-        this.lastScrollPosition.x,
-        this.lastScrollPosition.y,
-        containerIndex
-      );
-    }, this.config.scrollDebounce);
-  }
-
   // ========================================================================
-  // Private Methods - Setup
+  // Abstract method implementations (required by BaseRecorder)
   // ========================================================================
 
-  private getDeviceInfo(): DeviceInfo {
+  protected getDeviceInfo(): DeviceInfo {
     const { width, height } = Dimensions.get('window');
     const scale = Dimensions.get('window').scale;
 
@@ -356,18 +117,228 @@ export class GremlinRecorder {
     };
   }
 
-  private getAppInfo(): AppInfo {
+  protected getAppInfo(): AppInfo {
     return {
-      name: this.config.appName,
-      version: this.config.appVersion,
-      build: this.config.appBuild,
+      name: this.rnConfig.appName,
+      version: this.rnConfig.appVersion,
+      build: this.rnConfig.appBuild,
       identifier: this.getBundleId(),
     };
   }
 
+  // ========================================================================
+  // Lifecycle
+  // ========================================================================
+
+  /**
+   * Start recording session.
+   * Delegates session creation to BaseRecorder, then sets up RN-specific listeners.
+   */
+  public override start(navigationRef?: NavigationRef): void {
+    if (this.isRecording()) {
+      console.warn('GremlinRecorder: Already recording');
+      return;
+    }
+
+    // BaseRecorder creates session, sets recording=true, initializes timestamps
+    super.start();
+
+    // Start transport batching if enabled
+    const session = this.getSession();
+    if (this.transport && session) {
+      this.transport.startBatching(session.header.sessionId);
+    }
+
+    // Setup gesture interception
+    if (this.rnConfig.captureGestures) {
+      this.setupGestureInterceptor();
+    }
+
+    // Setup navigation listener
+    if (this.rnConfig.captureNavigation && navigationRef) {
+      this.setupNavigationListener(navigationRef);
+    }
+
+    // Setup performance monitor
+    if (this.rnConfig.capturePerformance) {
+      this.setupPerformanceMonitor();
+    }
+
+    // Setup app state listener
+    this.setupAppStateListener();
+
+    // Setup error tracking via ErrorUtils
+    this.setupErrorTracking();
+
+    // Setup network interception
+    if (this.rnConfig.captureNetwork) {
+      this.interceptFetch();
+      this.interceptXhr();
+    }
+
+    console.log(`GremlinRecorder: Started session ${session?.header.sessionId}`);
+  }
+
+  /**
+   * Stop recording and return session.
+   * Cleans up RN-specific listeners, then delegates to BaseRecorder.
+   */
+  public override stop(): GremlinSession | null {
+    if (!this.isRecording()) {
+      console.warn('GremlinRecorder: Not recording');
+      return null;
+    }
+
+    // Stop transport batching
+    if (this.transport) {
+      this.transport.stopBatching();
+    }
+
+    // Cleanup RN-specific listeners before stopping base
+    this.cleanupListeners();
+
+    // BaseRecorder flushes batcher, sets recording=false, sets endTime
+    const finalSession = super.stop();
+
+    if (finalSession) {
+      console.log(
+        `GremlinRecorder: Stopped session ${finalSession.header.sessionId} - ` +
+          `${finalSession.events.length} events, ${finalSession.elements.length} elements`
+      );
+
+      // Auto-upload if transport is configured
+      if (this.transport) {
+        this.transport.upload(finalSession).then((result) => {
+          if (result.success) {
+            console.log(`GremlinRecorder: Session uploaded via ${result.method}`);
+          } else {
+            console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
+          }
+        });
+      }
+    }
+
+    return finalSession;
+  }
+
+  /**
+   * Stop recording and upload session (async version).
+   * Returns the upload result along with the session.
+   */
+  public async stopAndUpload(): Promise<{ session: GremlinSession | null; uploadResult: TransportResult | null }> {
+    const session = this.stopWithoutUpload();
+
+    if (!session || !this.transport) {
+      return { session, uploadResult: null };
+    }
+
+    const uploadResult = await this.transport.upload(session);
+    return { session, uploadResult };
+  }
+
+  /**
+   * Stop recording without auto-upload (for manual handling).
+   */
+  public stopWithoutUpload(): GremlinSession | null {
+    if (!this.isRecording()) {
+      console.warn('GremlinRecorder: Not recording');
+      return null;
+    }
+
+    // Stop transport batching but don't upload
+    if (this.transport) {
+      this.transport.stopBatching();
+    }
+
+    // Cleanup RN-specific listeners
+    this.cleanupListeners();
+
+    // BaseRecorder flushes batcher, sets recording=false, sets endTime
+    const finalSession = super.stop();
+
+    if (finalSession) {
+      console.log(
+        `GremlinRecorder: Stopped session ${finalSession.header.sessionId} - ` +
+          `${finalSession.events.length} events, ${finalSession.elements.length} elements`
+      );
+    }
+
+    return finalSession;
+  }
+
+  /**
+   * Manually upload a session.
+   */
+  public async uploadSession(session: GremlinSession): Promise<TransportResult | null> {
+    if (!this.transport) {
+      console.warn('GremlinRecorder: Transport not configured');
+      return null;
+    }
+    return this.transport.upload(session);
+  }
+
+  /**
+   * Check if dev server is available.
+   */
+  public async checkServer(): Promise<boolean> {
+    if (!this.transport) return false;
+    return this.transport.checkServer();
+  }
+
+  /**
+   * Check if currently recording.
+   */
+  public isActive(): boolean {
+    return this.isRecording();
+  }
+
+  /**
+   * Get gesture interceptor (for use with GremlinProvider).
+   */
+  public getGestureInterceptor(): GestureInterceptor | null {
+    return this.gestureInterceptor;
+  }
+
+  public override destroy(): void {
+    this.cleanupListeners();
+    if (this.transport) {
+      this.transport.stopBatching();
+    }
+    super.destroy();
+  }
+
+  // ========================================================================
+  // Event Recording Override
+  // ========================================================================
+
+  /**
+   * Override to auto-attach performance data and emit to onEvent callback.
+   */
+  protected override addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
+    // Auto-attach perf sample if monitor is active and event doesn't already have one
+    let enrichedEvent = event;
+    if (this.performanceMonitor && !event.perf) {
+      enrichedEvent = { ...event, perf: this.performanceMonitor.getCurrentSample() };
+    }
+
+    // Call parent implementation (handles delta timestamps, session push, debug logging)
+    super.addEventToSession(enrichedEvent);
+
+    // Emit to callback if configured
+    if (this.rnConfig.onEvent && this.session) {
+      const fullEvent = this.session.events[this.session.events.length - 1];
+      if (fullEvent) {
+        this.rnConfig.onEvent(fullEvent);
+      }
+    }
+  }
+
+  // ========================================================================
+  // Private Methods - Device Info Helpers
+  // ========================================================================
+
   private getDeviceModel(): string | undefined {
     try {
-      // Try to get from native modules
       if (Platform.OS === 'ios') {
         return NativeModules.DeviceInfo?.model;
       } else if (Platform.OS === 'android') {
@@ -413,9 +384,9 @@ export class GremlinRecorder {
   private setupGestureInterceptor(): void {
     this.gestureInterceptor = new GestureInterceptor({
       onGesture: this.handleGesture,
-      minSwipeDistance: this.config.minSwipeDistance,
-      longPressDuration: this.config.longPressDuration,
-      doubleTapDelay: this.config.doubleTapDelay,
+      minSwipeDistance: this.rnConfig.minSwipeDistance,
+      longPressDuration: this.rnConfig.longPressDuration,
+      doubleTapDelay: this.rnConfig.doubleTapDelay,
     });
   }
 
@@ -423,7 +394,7 @@ export class GremlinRecorder {
     this.navigationListener = new NavigationListener({
       onNavigationChange: this.handleNavigationChange,
       navigationRef,
-      maskParams: this.config.maskInputs,
+      maskParams: this.rnConfig.maskInputs,
     });
 
     this.navigationListener.start(navigationRef);
@@ -431,7 +402,7 @@ export class GremlinRecorder {
 
   private setupPerformanceMonitor(): void {
     this.performanceMonitor = new PerformanceMonitor({
-      sampleInterval: this.config.performanceInterval,
+      sampleInterval: this.rnConfig.performanceInterval,
       trackFPS: true,
       trackMemory: true,
       trackJSLag: true,
@@ -448,29 +419,298 @@ export class GremlinRecorder {
   }
 
   private setupErrorTracking(): void {
-    // Note: React Native error handling is complex and typically done at app level
-    // This is a basic implementation - production apps should use error boundaries
-    // and custom error reporting services
+    try {
+      if (typeof ErrorUtils !== 'undefined') {
+        // Save previous handler so we can restore on stop and chain calls
+        this.previousErrorHandler = ErrorUtils.getGlobalHandler();
 
-    this.errorHandler = (error: Error) => {
-      if (!this.session) return;
+        ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+          // Record error event via BaseRecorder's recordError
+          this.recordError(
+            error.message,
+            'js',
+            error.stack,
+            isFatal ?? false
+          );
 
-      const errorEvent: Omit<GremlinEvent, 'dt'> = {
-        type: 9 as EventTypeEnum.ERROR,
-        data: {
-          kind: 'error',
-          message: error.message,
-          stack: error.stack,
-          errorType: 'js',
-          fatal: false,
-        } as ErrorEvent,
-        perf: this.capturePerformance(),
-      };
+          // Chain to previous handler so other error reporters still work
+          if (this.previousErrorHandler) {
+            this.previousErrorHandler(error, isFatal);
+          }
+        });
+      }
+    } catch {
+      // ErrorUtils may not be available in all environments (e.g. tests)
+    }
+  }
 
-      this.addEventToSession(errorEvent);
+  private teardownErrorTracking(): void {
+    try {
+      if (typeof ErrorUtils !== 'undefined' && this.previousErrorHandler) {
+        ErrorUtils.setGlobalHandler(this.previousErrorHandler);
+        this.previousErrorHandler = null;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  private cleanupListeners(): void {
+    if (this.gestureInterceptor) {
+      this.gestureInterceptor.cleanup();
+      this.gestureInterceptor = null;
+    }
+
+    if (this.navigationListener) {
+      this.navigationListener.stop();
+      this.navigationListener = null;
+    }
+
+    if (this.performanceMonitor) {
+      this.performanceMonitor.stop();
+      this.performanceMonitor = null;
+    }
+
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
+    }
+
+    this.teardownErrorTracking();
+    this.restoreNetworkInterception();
+  }
+
+  // ========================================================================
+  // Private Methods - Network Interception
+  // ========================================================================
+
+  private sanitizeUrl(raw: string): string {
+    try {
+      const url = new URL(raw);
+      return url.origin + url.pathname;
+    } catch {
+      return raw;
+    }
+  }
+
+  private shouldIgnoreUrl(url: string): boolean {
+    // Skip data: and blob: URLs
+    if (url.startsWith('data:') || url.startsWith('blob:')) return true;
+
+    // Skip requests to the gremlin transport endpoint
+    const transportEndpoint = this.transport
+      ? (this.transport as any).config?.endpoint ?? 'http://localhost:3334'
+      : 'http://localhost:3334';
+    try {
+      const reqUrl = new URL(url);
+      const devUrl = new URL(transportEndpoint);
+      if (reqUrl.hostname === devUrl.hostname && reqUrl.port === devUrl.port) {
+        return true;
+      }
+    } catch {
+      if (url.includes('localhost:3334')) return true;
+    }
+
+    // Check user-provided ignore patterns
+    for (const pattern of this.rnConfig.networkIgnorePatterns) {
+      if (url.includes(pattern)) return true;
+    }
+
+    return false;
+  }
+
+  private nextRequestId(): string {
+    return `net_${++this.networkRequestCounter}`;
+  }
+
+  private interceptFetch(): void {
+    this.originalFetch = globalThis.fetch;
+    const recorder = this;
+
+    const wrappedFetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      const method = init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET';
+
+      if (recorder.shouldIgnoreUrl(url)) {
+        return recorder.originalFetch!(input, init);
+      }
+
+      const requestId = recorder.nextRequestId();
+      const sanitizedUrl = recorder.sanitizeUrl(url);
+      const startTime = Date.now();
+
+      // Record start event
+      if (recorder.isRecording()) {
+        recorder.addEventToSession({
+          type: EventTypeEnum.NETWORK,
+          data: {
+            kind: 'network',
+            requestId,
+            method: method.toUpperCase(),
+            url: sanitizedUrl,
+            phase: 'start',
+          } as NetworkEvent,
+        });
+      }
+
+      return recorder.originalFetch!(input, init).then(
+        (response) => {
+          if (recorder.isRecording()) {
+            recorder.addEventToSession({
+              type: EventTypeEnum.NETWORK,
+              data: {
+                kind: 'network',
+                requestId,
+                method: method.toUpperCase(),
+                url: sanitizedUrl,
+                status: response.status,
+                duration: Date.now() - startTime,
+                phase: 'end',
+              } as NetworkEvent,
+            });
+          }
+          return response;
+        },
+        (error) => {
+          if (recorder.isRecording()) {
+            recorder.addEventToSession({
+              type: EventTypeEnum.NETWORK,
+              data: {
+                kind: 'network',
+                requestId,
+                method: method.toUpperCase(),
+                url: sanitizedUrl,
+                duration: Date.now() - startTime,
+                phase: 'error',
+                error: error instanceof Error ? error.message : String(error),
+              } as NetworkEvent,
+            });
+          }
+          throw error;
+        }
+      );
     };
 
-    // This would be set up at the app level with ErrorUtils or custom error boundary
+    // Copy static properties from original fetch (e.g., preconnect)
+    Object.assign(wrappedFetch, this.originalFetch);
+    globalThis.fetch = wrappedFetch as typeof globalThis.fetch;
+  }
+
+  private interceptXhr(): void {
+    // XMLHttpRequest may not be available in all RN environments
+    if (typeof XMLHttpRequest === 'undefined') return;
+
+    this.originalXhrOpen = XMLHttpRequest.prototype.open;
+    this.originalXhrSend = XMLHttpRequest.prototype.send;
+    const recorder = this;
+
+    XMLHttpRequest.prototype.open = function (
+      method: string,
+      url: string | URL,
+      ...rest: any[]
+    ) {
+      (this as any).__gremlin_method = method;
+      (this as any).__gremlin_url = typeof url === 'string' ? url : url.href;
+      return recorder.originalXhrOpen!.apply(this, [method, url, ...rest] as any);
+    };
+
+    XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
+      const method: string = (this as any).__gremlin_method ?? 'GET';
+      const url: string = (this as any).__gremlin_url ?? '';
+
+      if (recorder.shouldIgnoreUrl(url)) {
+        return recorder.originalXhrSend!.call(this, body);
+      }
+
+      const requestId = recorder.nextRequestId();
+      const sanitizedUrl = recorder.sanitizeUrl(url);
+      const startTime = Date.now();
+
+      if (recorder.isRecording()) {
+        recorder.addEventToSession({
+          type: EventTypeEnum.NETWORK,
+          data: {
+            kind: 'network',
+            requestId,
+            method: method.toUpperCase(),
+            url: sanitizedUrl,
+            phase: 'start',
+          } as NetworkEvent,
+        });
+      }
+
+      this.addEventListener('load', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              status: this.status,
+              duration: Date.now() - startTime,
+              phase: 'end',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      this.addEventListener('error', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              duration: Date.now() - startTime,
+              phase: 'error',
+              error: 'Network request failed',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      this.addEventListener('abort', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              duration: Date.now() - startTime,
+              phase: 'error',
+              error: 'Request aborted',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      return recorder.originalXhrSend!.call(this, body);
+    };
+  }
+
+  private restoreNetworkInterception(): void {
+    if (this.originalFetch) {
+      globalThis.fetch = this.originalFetch;
+      this.originalFetch = null;
+    }
+    if (this.originalXhrOpen) {
+      XMLHttpRequest.prototype.open = this.originalXhrOpen;
+      this.originalXhrOpen = null;
+    }
+    if (this.originalXhrSend) {
+      XMLHttpRequest.prototype.send = this.originalXhrSend;
+      this.originalXhrSend = null;
+    }
   }
 
   // ========================================================================
@@ -478,7 +718,7 @@ export class GremlinRecorder {
   // ========================================================================
 
   private handleGesture = async (gesture: GestureEvent): Promise<void> => {
-    if (!this.session) return;
+    if (!this.isRecording()) return;
 
     try {
       // Find interactive element if target is available
@@ -487,14 +727,14 @@ export class GremlinRecorder {
         const interactiveElement = findInteractiveParent(gesture.target);
         const elementInfo = await captureElement(interactiveElement || gesture.target);
         if (elementInfo) {
-          elementIndex = getOrCreateElement(this.session, toElementInfo(elementInfo));
+          elementIndex = this.getOrCreateElement(toElementInfo(elementInfo));
         }
       }
 
       // Create event based on gesture type
       if (gesture.type === 'swipe') {
-        const swipeEvent: Omit<GremlinEvent, 'dt'> = {
-          type: 3 as EventTypeEnum.SWIPE,
+        this.addEventToSession({
+          type: EventTypeEnum.SWIPE,
           data: {
             kind: 'swipe',
             startX: gesture.startX!,
@@ -504,17 +744,16 @@ export class GremlinRecorder {
             duration: gesture.duration!,
             direction: gesture.direction!,
           } as SwipeEvent,
-          perf: this.capturePerformance(),
-        };
-        this.addEventToSession(swipeEvent);
+        });
       } else {
-        // Tap, double_tap, long_press
-        const tapEvent: Omit<GremlinEvent, 'dt'> = {
-          type: gesture.type === 'double_tap'
-            ? (1 as EventTypeEnum.DOUBLE_TAP)
-            : gesture.type === 'long_press'
-            ? (2 as EventTypeEnum.LONG_PRESS)
-            : (0 as EventTypeEnum.TAP),
+        const eventType = gesture.type === 'double_tap'
+          ? EventTypeEnum.DOUBLE_TAP
+          : gesture.type === 'long_press'
+          ? EventTypeEnum.LONG_PRESS
+          : EventTypeEnum.TAP;
+
+        this.addEventToSession({
+          type: eventType,
           data: {
             kind: gesture.type === 'double_tap'
               ? 'double_tap'
@@ -525,9 +764,7 @@ export class GremlinRecorder {
             y: gesture.y,
             elementIndex,
           } as TapEvent,
-          perf: this.capturePerformance(),
-        };
-        this.addEventToSession(tapEvent);
+        });
       }
     } catch (error) {
       console.warn('Failed to handle gesture:', error);
@@ -535,80 +772,21 @@ export class GremlinRecorder {
   };
 
   private handleNavigationChange = (change: NavigationChange): void => {
-    if (!this.session) return;
+    if (!this.isRecording()) return;
 
     // Reset performance monitor navigation timer
     if (this.performanceMonitor) {
       this.performanceMonitor.markNavigation();
     }
 
-    const navEvent: Omit<GremlinEvent, 'dt'> = {
-      type: 6 as EventTypeEnum.NAVIGATION,
-      data: {
-        kind: 'navigation',
-        navType: change.type,
-        screen: change.screen,
-        params: change.params,
-      } as NavigationEvent,
-      perf: this.capturePerformance(),
-    };
-
-    this.addEventToSession(navEvent);
+    // Use BaseRecorder's recordNavigation which handles currentScreen tracking
+    this.recordNavigation(change.screen, change.type);
   };
 
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
-    if (!this.session) return;
+    if (!this.isRecording()) return;
 
-    const appStateEvent: Omit<GremlinEvent, 'dt'> = {
-      type: 10 as EventTypeEnum.APP_STATE,
-      data: {
-        kind: 'app_state',
-        state: nextAppState as 'active' | 'background' | 'inactive',
-      } as AppStateEvent,
-      perf: this.capturePerformance(),
-    };
-
-    this.addEventToSession(appStateEvent);
+    // Use BaseRecorder's recordAppState which handles flush on background
+    this.recordAppState(nextAppState as 'active' | 'background' | 'inactive');
   };
-
-  private recordScrollEvent(x: number, y: number, containerIndex?: number): void {
-    if (!this.session) return;
-
-    const scrollEvent: Omit<GremlinEvent, 'dt'> = {
-      type: 4 as EventTypeEnum.SCROLL,
-      data: {
-        kind: 'scroll',
-        deltaX: Math.round(x),
-        deltaY: Math.round(y),
-        containerIndex,
-      } as ScrollEvent,
-      perf: this.capturePerformance(),
-    };
-
-    this.addEventToSession(scrollEvent);
-  }
-
-  // ========================================================================
-  // Private Methods - Performance & Event Management
-  // ========================================================================
-
-  private capturePerformance(): PerformanceSample | undefined {
-    if (!this.config.capturePerformance || !this.performanceMonitor) {
-      return undefined;
-    }
-
-    return this.performanceMonitor.getCurrentSample();
-  }
-
-  private addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
-    if (!this.session) return;
-
-    this.lastEventTimestamp = addEvent(this.session, event, this.lastEventTimestamp);
-
-    // Emit to callback if configured
-    if (this.config.onEvent) {
-      const fullEvent = this.session.events[this.session.events.length - 1];
-      this.config.onEvent(fullEvent);
-    }
-  }
 }

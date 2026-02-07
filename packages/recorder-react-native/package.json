@@ -16,7 +16,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@gremlin/session": "file:../session"
+    "@gremlin/session": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

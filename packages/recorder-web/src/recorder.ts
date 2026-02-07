@@ -14,6 +14,7 @@ import type {
   AppInfo,
   InputEvent,
   NavigationEvent,
+  NetworkEvent,
 } from '@gremlin/session';
 import {
   BaseRecorder,
@@ -68,6 +69,12 @@ export interface RecorderConfig extends BaseRecorderConfig {
   /** Capture rrweb events for replay (default: true) */
   captureRrweb?: boolean;
 
+  /** Capture network requests (fetch and XHR) (default: true) */
+  captureNetwork?: boolean;
+
+  /** URL patterns to ignore for network capture (substring match) */
+  networkIgnorePatterns?: string[];
+
   /** Callback for rrweb events (for custom storage) */
   onRrwebEvent?: (event: eventWithTime) => void;
 
@@ -117,6 +124,8 @@ export class GremlinRecorder extends BaseRecorder {
     persistSession: boolean;
     storageKey: string;
     captureRrweb: boolean;
+    captureNetwork: boolean;
+    networkIgnorePatterns: string[];
     rrwebOptions: Partial<recordOptions<eventWithTime>>;
     autoUpload: boolean;
   };
@@ -127,6 +136,12 @@ export class GremlinRecorder extends BaseRecorder {
   private performanceMonitor: WebPerformanceMonitor | null = null;
   private originalPushState: typeof history.pushState | null = null;
   private originalReplaceState: typeof history.replaceState | null = null;
+
+  /** Network interception */
+  private originalFetch: typeof window.fetch | null = null;
+  private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
+  private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
+  private networkRequestCounter = 0;
 
   /** rrweb events for session replay */
   private rrwebEvents: eventWithTime[] = [];
@@ -160,6 +175,8 @@ export class GremlinRecorder extends BaseRecorder {
       persistSession: config.persistSession ?? false,
       storageKey: config.storageKey ?? GremlinRecorder.DEFAULT_STORAGE_KEY,
       captureRrweb: config.captureRrweb ?? true,
+      captureNetwork: config.captureNetwork ?? true,
+      networkIgnorePatterns: config.networkIgnorePatterns ?? [],
       rrwebOptions: config.rrwebOptions ?? {},
       autoUpload: config.autoUpload ?? transportEnabled,
     };
@@ -520,9 +537,15 @@ export class GremlinRecorder extends BaseRecorder {
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
     this.interceptHistoryApi();
+
+    if (this.webConfig.captureNetwork) {
+      this.interceptFetch();
+      this.interceptXhr();
+    }
   }
 
   private removeEventListeners(): void {
+    this.restoreNetworkInterception();
     document.removeEventListener('click', this.handleClick, true);
     document.removeEventListener('input', this.handleInput, true);
     document.removeEventListener('change', this.handleChange, true);
@@ -694,6 +717,237 @@ export class GremlinRecorder extends BaseRecorder {
     if (this.originalReplaceState) {
       history.replaceState = this.originalReplaceState;
       this.originalReplaceState = null;
+    }
+  }
+
+  // ========================================================================
+  // Network Interception
+  // ========================================================================
+
+  private sanitizeUrl(raw: string): string {
+    try {
+      const url = new URL(raw, window.location.origin);
+      return url.origin + url.pathname;
+    } catch {
+      return raw;
+    }
+  }
+
+  private shouldIgnoreUrl(url: string): boolean {
+    // Skip data: and blob: URLs
+    if (url.startsWith('data:') || url.startsWith('blob:')) return true;
+
+    // Skip requests to the gremlin dev server
+    const transportEndpoint = this.transport
+      ? (this.transport as any).config?.endpoint ?? 'http://localhost:3334'
+      : 'http://localhost:3334';
+    try {
+      const reqUrl = new URL(url, window.location.origin);
+      const devUrl = new URL(transportEndpoint);
+      if (reqUrl.hostname === devUrl.hostname && reqUrl.port === devUrl.port) {
+        return true;
+      }
+    } catch {
+      // If parsing fails, check for localhost:3334 substring
+      if (url.includes('localhost:3334')) return true;
+    }
+
+    // Check user-provided ignore patterns
+    for (const pattern of this.webConfig.networkIgnorePatterns) {
+      if (url.includes(pattern)) return true;
+    }
+
+    return false;
+  }
+
+  private nextRequestId(): string {
+    return `net_${++this.networkRequestCounter}`;
+  }
+
+  private interceptFetch(): void {
+    this.originalFetch = window.fetch;
+    const recorder = this;
+
+    const wrappedFetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      const method = init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET';
+
+      if (recorder.shouldIgnoreUrl(url)) {
+        return recorder.originalFetch!(input, init);
+      }
+
+      const requestId = recorder.nextRequestId();
+      const sanitizedUrl = recorder.sanitizeUrl(url);
+      const startTime = Date.now();
+
+      // Record start event
+      if (recorder.isRecording()) {
+        recorder.addEventToSession({
+          type: EventTypeEnum.NETWORK,
+          data: {
+            kind: 'network',
+            requestId,
+            method: method.toUpperCase(),
+            url: sanitizedUrl,
+            phase: 'start',
+          } as NetworkEvent,
+        });
+      }
+
+      return recorder.originalFetch!(input, init).then(
+        (response) => {
+          if (recorder.isRecording()) {
+            recorder.addEventToSession({
+              type: EventTypeEnum.NETWORK,
+              data: {
+                kind: 'network',
+                requestId,
+                method: method.toUpperCase(),
+                url: sanitizedUrl,
+                status: response.status,
+                duration: Date.now() - startTime,
+                phase: 'end',
+              } as NetworkEvent,
+            });
+          }
+          return response;
+        },
+        (error) => {
+          if (recorder.isRecording()) {
+            recorder.addEventToSession({
+              type: EventTypeEnum.NETWORK,
+              data: {
+                kind: 'network',
+                requestId,
+                method: method.toUpperCase(),
+                url: sanitizedUrl,
+                duration: Date.now() - startTime,
+                phase: 'error',
+                error: error instanceof Error ? error.message : String(error),
+              } as NetworkEvent,
+            });
+          }
+          throw error;
+        }
+      );
+    };
+
+    // Copy static properties from original fetch (e.g., preconnect)
+    Object.assign(wrappedFetch, this.originalFetch);
+    window.fetch = wrappedFetch as typeof window.fetch;
+  }
+
+  private interceptXhr(): void {
+    this.originalXhrOpen = XMLHttpRequest.prototype.open;
+    this.originalXhrSend = XMLHttpRequest.prototype.send;
+    const recorder = this;
+
+    XMLHttpRequest.prototype.open = function (
+      method: string,
+      url: string | URL,
+      ...rest: any[]
+    ) {
+      (this as any).__gremlin_method = method;
+      (this as any).__gremlin_url = typeof url === 'string' ? url : url.href;
+      return recorder.originalXhrOpen!.apply(this, [method, url, ...rest] as any);
+    };
+
+    XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
+      const method: string = (this as any).__gremlin_method ?? 'GET';
+      const url: string = (this as any).__gremlin_url ?? '';
+
+      if (recorder.shouldIgnoreUrl(url)) {
+        return recorder.originalXhrSend!.call(this, body);
+      }
+
+      const requestId = recorder.nextRequestId();
+      const sanitizedUrl = recorder.sanitizeUrl(url);
+      const startTime = Date.now();
+
+      if (recorder.isRecording()) {
+        recorder.addEventToSession({
+          type: EventTypeEnum.NETWORK,
+          data: {
+            kind: 'network',
+            requestId,
+            method: method.toUpperCase(),
+            url: sanitizedUrl,
+            phase: 'start',
+          } as NetworkEvent,
+        });
+      }
+
+      this.addEventListener('load', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              status: this.status,
+              duration: Date.now() - startTime,
+              phase: 'end',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      this.addEventListener('error', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              duration: Date.now() - startTime,
+              phase: 'error',
+              error: 'Network request failed',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      this.addEventListener('abort', () => {
+        if (recorder.isRecording()) {
+          recorder.addEventToSession({
+            type: EventTypeEnum.NETWORK,
+            data: {
+              kind: 'network',
+              requestId,
+              method: method.toUpperCase(),
+              url: sanitizedUrl,
+              duration: Date.now() - startTime,
+              phase: 'error',
+              error: 'Request aborted',
+            } as NetworkEvent,
+          });
+        }
+      });
+
+      return recorder.originalXhrSend!.call(this, body);
+    };
+  }
+
+  private restoreNetworkInterception(): void {
+    if (this.originalFetch) {
+      window.fetch = this.originalFetch;
+      this.originalFetch = null;
+    }
+    if (this.originalXhrOpen) {
+      XMLHttpRequest.prototype.open = this.originalXhrOpen;
+      this.originalXhrOpen = null;
+    }
+    if (this.originalXhrSend) {
+      XMLHttpRequest.prototype.send = this.originalXhrSend;
+      this.originalXhrSend = null;
     }
   }
 

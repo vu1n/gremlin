@@ -226,7 +226,7 @@ function generateRandomWalkTest(
 // Strategy: Boundary Abuse
 // ============================================================================
 
-const EVIL_STRINGS = [
+export const EVIL_STRINGS = [
   '', // empty
   ' ', // whitespace
   '   ', // multiple spaces
@@ -866,7 +866,7 @@ export function fuzzTestsToPlaywrightFile(
 // Utilities
 // ============================================================================
 
-function createSeededRandom(seed: number): () => number {
+export function createSeededRandom(seed: number): () => number {
   let state = seed;
   return () => {
     // Simple LCG random number generator
