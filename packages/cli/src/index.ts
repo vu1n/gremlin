@@ -13,6 +13,7 @@ import { status } from './commands/status.ts';
 import { analyticsSummary, analyticsErrors, analyticsPerformance } from './commands/analytics.ts';
 import { analyze } from './commands/analyze.ts';
 import { deployLocal, deployDocker, deployStatus, deployStop } from './commands/deploy.ts';
+import { perfBaseline } from './commands/perf-baseline.ts';
 
 const program = new Command();
 
@@ -221,6 +222,7 @@ program
   .option('--base-url <url>', 'Base URL for web tests', 'http://localhost:3000')
   .option('--app-id <id>', 'App ID for mobile tests', 'com.example.app')
   .option('--provider <name>', 'AI provider: anthropic, openai, gemini')
+  .option('--perf', 'Generate performance regression tests from baseline')
   .action(async (options) => {
     const json = program.opts().json;
     await generate({
@@ -229,6 +231,7 @@ program
       spec: options.spec,
       playwright: options.playwright,
       maestro: options.maestro,
+      perf: options.perf,
       baseUrl: options.baseUrl,
       appId: options.appId,
       provider: options.provider,
@@ -293,19 +296,25 @@ program
   .option('--watch', 'Run Playwright in UI/watch mode')
   .option('--update-snapshots', 'Update Playwright snapshots')
   .option('--device <name>', 'Maestro device to run on')
+  .option('--perf', 'Run performance regression tests and compare against baseline')
   .action(async (test, options) => {
     const json = program.opts().json;
-    await run({
-      test,
-      all: options.all,
-      testsDir: options.testsDir,
-      verbose: options.verbose,
-      headed: options.headed,
-      watch: options.watch,
-      updateSnapshots: options.updateSnapshots,
-      device: options.device,
-      json,
-    });
+    if (options.perf) {
+      const { runPerf } = await import('./commands/run.ts');
+      await runPerf({ json, verbose: options.verbose, headed: options.headed });
+    } else {
+      await run({
+        test,
+        all: options.all,
+        testsDir: options.testsDir,
+        verbose: options.verbose,
+        headed: options.headed,
+        watch: options.watch,
+        updateSnapshots: options.updateSnapshots,
+        device: options.device,
+        json,
+      });
+    }
   });
 
 // ============================================================================
@@ -434,6 +443,26 @@ deployCmd
     const json = program.opts().json;
     await deployStop({
       target: options.target,
+      json,
+    });
+  });
+
+// ============================================================================
+// Perf Baseline
+// ============================================================================
+
+program
+  .command('perf-baseline')
+  .description('Snapshot current performance metrics as a baseline for regression testing')
+  .option('-i, --input <path>', 'Sessions directory', '.gremlin/sessions')
+  .option('--margin <number>', 'Budget margin multiplier above p75', '1.4')
+  .option('--update', 'Update existing baseline (keep tighter budgets)')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await perfBaseline({
+      input: options.input,
+      margin: parseFloat(options.margin),
+      update: options.update,
       json,
     });
   });

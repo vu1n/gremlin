@@ -818,6 +818,77 @@ server.resource(
 );
 
 // ============================================================================
+// Tool: gremlin_perf_baseline
+// ============================================================================
+
+server.tool(
+  'gremlin_perf_baseline',
+  'Snapshot current performance metrics as a baseline for regression testing',
+  {
+    margin: z.number().optional().describe('Budget margin multiplier above p75 (default 1.4)'),
+    update: z.boolean().optional().describe('Update existing baseline (keep tighter budgets)'),
+  },
+  async ({ margin, update }) => {
+    const args: string[] = ['perf-baseline'];
+    if (margin) args.push(`--margin ${margin}`);
+    if (update) args.push('--update');
+
+    const result = runCliCommand(args.join(' '));
+
+    try {
+      return textResult(JSON.parse(result));
+    } catch {
+      return textResult({ output: result });
+    }
+  }
+);
+
+// ============================================================================
+// Tool: gremlin_generate_perf_tests
+// ============================================================================
+
+server.tool(
+  'gremlin_generate_perf_tests',
+  'Generate Playwright performance regression tests from baseline budgets',
+  {
+    baseUrl: z.string().optional().describe('Base URL for web tests (default http://localhost:3000)'),
+  },
+  async ({ baseUrl }) => {
+    const args: string[] = ['generate', '--perf'];
+    if (baseUrl) args.push(`--base-url ${baseUrl}`);
+
+    const result = runCliCommand(args.join(' '));
+
+    try {
+      return textResult(JSON.parse(result));
+    } catch {
+      return textResult({ output: result });
+    }
+  }
+);
+
+// ============================================================================
+// Tool: gremlin_run_perf_tests
+// ============================================================================
+
+server.tool(
+  'gremlin_run_perf_tests',
+  'Run performance regression tests and compare results against baseline budgets',
+  {},
+  async () => {
+    const args: string[] = ['run', '--perf'];
+
+    const result = runCliCommand(args.join(' '));
+
+    try {
+      return textResult(JSON.parse(result));
+    } catch {
+      return textResult({ output: result });
+    }
+  }
+);
+
+// ============================================================================
 // Start Server
 // ============================================================================
 

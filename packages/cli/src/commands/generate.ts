@@ -13,8 +13,15 @@ import {
   generatePlaywrightTests,
   generateMaestroFlows,
   generateMaestroTestSuite,
+  generatePerfTests,
+} from '@gremlin/analysis';
+import type {
+  PerfBaseline as AnalysisPerfBaseline,
+  PerfTestResult,
 } from '@gremlin/analysis';
 import { output, outputError, type OutputOptions } from '../output.ts';
+import { readBaseline } from '../perf-baseline-types.ts';
+import type { PerfBaseline } from '../perf-baseline-types.ts';
 
 // ============================================================================
 // Types
@@ -25,6 +32,7 @@ export interface GenerateOptions extends OutputOptions {
   output?: string;
   playwright?: boolean;
   maestro?: boolean;
+  perf?: boolean;
   spec?: string;
   baseUrl?: string;
   appId?: string;
@@ -43,11 +51,22 @@ export interface GenerateResult {
   provider: string;
 }
 
+export interface GeneratePerfResult {
+  perfTests: { flowName: string; path: string; stepCount: number }[];
+  outputDir: string;
+  baselineUsed: boolean;
+}
+
 // ============================================================================
 // Main Command
 // ============================================================================
 
-export async function generate(options: GenerateOptions): Promise<GenerateResult | null> {
+export async function generate(options: GenerateOptions): Promise<GenerateResult | GeneratePerfResult | null> {
+  // Handle --perf mode separately
+  if (options.perf) {
+    return generatePerf(options);
+  }
+
   const {
     input = '.gremlin/sessions',
     output: outputDir = '.gremlin/tests',
@@ -215,6 +234,159 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   if (maestro) {
     console.log(`  Run Maestro tests: maestro test ${join(outputDir, 'maestro')}`);
   }
+
+  return result;
+}
+
+// ============================================================================
+// Perf Test Generation
+// ============================================================================
+
+/**
+ * Convert CLI PerfBaseline format to the analysis package's PerfBaseline format.
+ * The CLI stores global vitals at `global.lcp`, while the analysis package
+ * expects `global.webVitals.lcp`. Flows differ structurally as well.
+ */
+function toAnalysisBaseline(
+  baseline: PerfBaseline,
+  sessions: GremlinSession[]
+): AnalysisPerfBaseline {
+  const flows: AnalysisPerfBaseline['flows'] = {};
+
+  for (const flow of baseline.flows) {
+    // Find session IDs that match this flow's pattern
+    const matchingSessionIds = sessions
+      .filter((s) => s.header?.sessionId)
+      .map((s) => s.header.sessionId);
+
+    // Convert pattern steps to the analysis format
+    const steps = flow.pattern.map((p) => {
+      const [type, value] = p.split(':');
+      if (type === 'navigate') {
+        return { type: 'navigation', screen: value, url: `/${value}` };
+      }
+      return { type: 'tap', target: value };
+    });
+
+    flows[flow.name] = {
+      sessionIds: matchingSessionIds.slice(0, flow.sessionCount),
+      steps,
+      duration: {
+        p50: 0,
+        p75: flow.budgets.totalDuration.p75,
+        p95: 0,
+        budget: flow.budgets.totalDuration.budget,
+      },
+      longTasks: {
+        count: { p50: 0, p75: 0, p95: 0, budget: 10 },
+        totalDuration: {
+          p50: 0,
+          p75: flow.budgets.maxLongTaskDuration.p75,
+          p95: 0,
+          budget: flow.budgets.maxLongTaskDuration.budget,
+        },
+      },
+    };
+  }
+
+  return {
+    version: 1,
+    createdAt: baseline.createdAt,
+    updatedAt: baseline.updatedAt,
+    sessionCount: baseline.sessionCount,
+    global: {
+      webVitals: {
+        lcp: baseline.global.lcp,
+        fcp: baseline.global.fcp,
+        cls: baseline.global.cls,
+        inp: baseline.global.inp,
+        ttfb: baseline.global.ttfb,
+      },
+      longTasks: {
+        count: { p50: 0, p75: 0, p95: 0, budget: 10 },
+        totalDuration: { p50: 0, p75: 0, p95: 0, budget: 5000 },
+      },
+    },
+    flows,
+  };
+}
+
+async function generatePerf(options: GenerateOptions): Promise<GeneratePerfResult | null> {
+  const {
+    input = '.gremlin/sessions',
+    baseUrl = 'http://localhost:3000',
+    json,
+  } = options;
+  const perfOutputDir = '.gremlin/tests/perf';
+
+  // Read baseline
+  const baseline = readBaseline();
+  if (!baseline) {
+    if (outputError('generate', ['No perf baseline found. Run `gremlin perf-baseline` first.'], options)) {
+      process.exit(1);
+    }
+    console.error('No perf baseline found.');
+    console.error('Run `gremlin perf-baseline` first to snapshot current performance metrics.');
+    process.exit(1);
+  }
+
+  // Load sessions
+  if (!existsSync(input)) {
+    if (outputError('generate', [`Sessions directory not found: ${input}`], options)) {
+      process.exit(1);
+    }
+    console.error(`Sessions directory not found: ${input}`);
+    process.exit(1);
+  }
+
+  const sessions = await loadSessions(input);
+  if (sessions.length === 0) {
+    if (outputError('generate', ['No sessions found'], options)) {
+      process.exit(1);
+    }
+    console.error('No sessions found');
+    process.exit(1);
+  }
+
+  if (!json) {
+    console.log('Gremlin Performance Test Generator');
+    console.log('');
+    console.log(`Sessions: ${sessions.length}`);
+    console.log(`Baseline flows: ${baseline.flows.length}`);
+    console.log('');
+    console.log('Generating performance tests...');
+  }
+
+  // Convert baseline format and generate
+  const analysisBaseline = toAnalysisBaseline(baseline, sessions);
+  const perfResult: PerfTestResult = generatePerfTests({
+    sessions,
+    baseline: analysisBaseline,
+    baseUrl,
+    outputDir: perfOutputDir,
+  });
+
+  const result: GeneratePerfResult = {
+    perfTests: perfResult.tests,
+    outputDir: perfResult.outputDir,
+    baselineUsed: true,
+  };
+
+  if (output('generate', result, options)) return result;
+
+  // Human-readable output
+  console.log('');
+  if (perfResult.tests.length === 0) {
+    console.log('No perf tests generated (baseline has no flows).');
+  } else {
+    console.log(`Generated ${perfResult.tests.length} perf test(s):`);
+    for (const t of perfResult.tests) {
+      console.log(`  ${t.flowName} — ${t.stepCount} steps → ${t.path}`);
+    }
+  }
+  console.log('');
+  console.log('Next steps:');
+  console.log(`  Run perf tests: gremlin run --perf`);
 
   return result;
 }

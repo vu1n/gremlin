@@ -149,6 +149,29 @@ gremlin run --json
 # Check: passed=true
 ```
 
+## Workflow: Performance Regression Testing
+
+```bash
+# 1. Record sessions with perf data (use gremlin dev + interact with app)
+gremlin sessions --json
+
+# 2. Snapshot current perf as baseline (computes p75 budgets per Web Vital + per flow)
+gremlin perf-baseline --json
+
+# 3. Generate Playwright perf tests from baseline budgets
+gremlin generate --perf --json
+
+# 4. Run perf tests and detect regressions
+gremlin run --perf --json
+# Check: allPassed=true
+```
+
+| Command | Description | Key JSON fields |
+|---------|-------------|-----------------|
+| `gremlin perf-baseline` | Snapshot perf baseline | `{ path, sessionCount, flowCount, margin, baseline }` |
+| `gremlin generate --perf` | Generate perf tests | `{ perfTests: [{flowName, path, stepCount}], outputDir, baselineUsed }` |
+| `gremlin run --perf` | Run perf tests vs baseline | `{ flows: [{name, passed, metrics}], allPassed }` |
+
 ## MCP Server Setup
 
 For direct tool integration (no subprocess spawning):
@@ -164,7 +187,7 @@ For direct tool integration (no subprocess spawning):
 }
 ```
 
-Available tools: `gremlin_status`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_analyze`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`.
+Available tools: `gremlin_status`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_analyze`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`, `gremlin_perf_baseline`, `gremlin_generate_perf_tests`, `gremlin_run_perf_tests`.
 
 Resources: `gremlin://config`, `gremlin://sessions/{id}`, `gremlin://spec`, `gremlin://llms.txt`.
 
