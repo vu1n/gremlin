@@ -162,7 +162,7 @@ async function loadSessions(dir: string): Promise<GremlinSession[]> {
 // Prompt Building
 // ============================================================================
 
-function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
+export function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
   const lines: string[] = [];
 
   for (let i = 0; i < sessions.length; i++) {

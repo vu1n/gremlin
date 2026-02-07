@@ -2,7 +2,7 @@
  * Cloudflare Workers environment types
  */
 
-import type { GremlinSession } from '@gremlin/session';
+import type { GremlinSession, SessionPerformance } from '@gremlin/session';
 
 // Cloudflare Workers R2 types (available in @cloudflare/workers-types)
 export interface R2ObjectBody {
@@ -98,6 +98,9 @@ export interface SessionSummary {
 
   /** Upload timestamp */
   uploadedAt: number;
+
+  /** Session-level performance data */
+  performance?: SessionPerformance;
 }
 
 /**
@@ -162,6 +165,7 @@ export function createSessionSummary(
     screenshotCount: session.screenshots.length,
     size,
     uploadedAt,
+    performance: session.performance,
   };
 }
 

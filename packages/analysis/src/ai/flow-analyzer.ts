@@ -346,7 +346,7 @@ Output ONLY the JSON, no other text.`;
 // Session Formatting
 // ============================================================================
 
-function formatSessionsForPrompt(sessions: GremlinSession[]): string {
+export function formatSessionsForPrompt(sessions: GremlinSession[]): string {
   const lines: string[] = [];
 
   for (let i = 0; i < sessions.length; i++) {
@@ -393,7 +393,7 @@ function formatSessionsForPrompt(sessions: GremlinSession[]): string {
   return lines.join('\n');
 }
 
-function formatEvent(
+export function formatEvent(
   session: GremlinSession,
   event: GremlinSession['events'][0],
   timestamp: number

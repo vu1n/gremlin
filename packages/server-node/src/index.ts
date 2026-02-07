@@ -19,6 +19,10 @@ import {
   getSessionMetadata,
   listSessions,
   storeSession,
+  listSessionsWithPerf,
+  parsePerfQueryParams,
+  getPerformanceAggregation,
+  getSessionPerformance,
 } from './storage';
 import { ensureDataLayout, getConfig } from './config';
 
@@ -106,6 +110,8 @@ app.get('/', (c) => {
       get: 'GET /v1/sessions/:id',
       list: 'GET /v1/sessions',
       delete: 'DELETE /v1/sessions/:id',
+      performance: 'GET /v1/sessions/:id/performance',
+      analyticsPerformance: 'GET /v1/analytics/performance',
     },
   });
 });
@@ -127,6 +133,66 @@ app.get('/metrics', async (c) => {
     ...metrics,
   });
 });
+
+// ============================================================================
+// Performance routes
+// ============================================================================
+
+app.get('/v1/analytics/performance', async (c) => {
+  try {
+    const aggregation = await getPerformanceAggregation(config);
+    return c.json(aggregation);
+  } catch (error) {
+    console.error('Error aggregating performance:', error);
+    return c.json<ErrorResponse>(
+      {
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to aggregate performance data',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+      },
+      500
+    );
+  }
+});
+
+app.get('/v1/sessions/:id/performance', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const result = await getSessionPerformance(config, id);
+
+    if (!result) {
+      return c.json<ErrorResponse>(
+        {
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Session not found',
+          },
+        },
+        404
+      );
+    }
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error getting session performance:', error);
+    return c.json<ErrorResponse>(
+      {
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to get session performance',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+      },
+      500
+    );
+  }
+});
+
+// ============================================================================
+// Session routes
+// ============================================================================
 
 app.post('/v1/sessions', async (c) => {
   try {
@@ -261,6 +327,23 @@ app.get('/v1/sessions/:id', async (c) => {
 
 app.get('/v1/sessions', async (c) => {
   try {
+    const queries = c.req.queries();
+    const queryObj: Record<string, string> = {};
+    for (const [key, values] of Object.entries(queries)) {
+      if (values && values.length > 0) queryObj[key] = values[0];
+    }
+
+    // If any perf-related query params are present, use the perf-aware listing
+    const hasPerfParams = queryObj.sort || queryObj.order ||
+      Object.keys(queryObj).some((k) => k.endsWith('_gt') || k.endsWith('_lt'));
+
+    if (hasPerfParams) {
+      const perfOpts = parsePerfQueryParams(queryObj);
+      const result = await listSessionsWithPerf(config, perfOpts);
+      return c.json(result);
+    }
+
+    // Default listing
     const limitParam = c.req.query('limit');
     const cursor = c.req.query('cursor');
 

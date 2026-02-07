@@ -2,7 +2,7 @@
  * Self-hosted server types
  */
 
-import type { GremlinSession } from '@gremlin/session';
+import type { GremlinSession, SessionPerformance } from '@gremlin/session';
 
 export interface ServerConfig {
   port: number;
@@ -31,6 +31,7 @@ export interface SessionSummary {
   screenshotCount: number;
   size: number;
   uploadedAt: number;
+  performance?: SessionPerformance;
 }
 
 export interface ErrorResponse {
@@ -85,6 +86,7 @@ export function createSessionSummary(
     screenshotCount: session.screenshots.length,
     size,
     uploadedAt,
+    performance: session.performance,
   };
 }
 

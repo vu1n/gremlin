@@ -2,7 +2,7 @@
  * R2 storage layer for Gremlin sessions
  */
 
-import type { GremlinSession } from '@gremlin/session';
+import type { GremlinSession, PerformanceSample } from '@gremlin/session';
 import type { Env, SessionListResult, SessionSummary } from './types';
 import { createSessionSummary } from './types';
 
@@ -216,4 +216,308 @@ export async function getSessionMetadata(
     console.error('Error getting session metadata:', error);
     return null;
   }
+}
+
+// ============================================================================
+// Performance query helpers
+// ============================================================================
+
+type PerfSortKey =
+  | 'lcp' | 'cls' | 'inp' | 'fcp' | 'ttfb'
+  | 'avgFps' | 'minFps' | 'longTasks' | 'peakMemory' | 'pageLoad'
+  | 'duration' | 'eventCount' | 'startTime';
+
+function getPerfValueFromSummary(s: SessionSummary, key: PerfSortKey): number | undefined {
+  const p = s.performance;
+  switch (key) {
+    case 'lcp': return p?.webVitals?.lcp;
+    case 'cls': return p?.webVitals?.cls;
+    case 'inp': return p?.webVitals?.inp;
+    case 'fcp': return p?.webVitals?.fcp;
+    case 'ttfb': return p?.webVitals?.ttfb;
+    case 'avgFps': return p?.avgFps;
+    case 'minFps': return p?.minFps;
+    case 'longTasks': return p?.longTaskCount;
+    case 'peakMemory': return p?.peakMemoryUsage;
+    case 'pageLoad': return p?.pageLoadTime;
+    case 'duration': return s.duration;
+    case 'eventCount': return s.eventCount;
+    case 'startTime': return s.startTime;
+  }
+}
+
+const PERF_FILTER_MAP: Record<string, PerfSortKey> = {
+  lcp: 'lcp', cls: 'cls', inp: 'inp', fcp: 'fcp', ttfb: 'ttfb',
+  avgFps: 'avgFps', minFps: 'minFps', longTasks: 'longTasks',
+  peakMemory: 'peakMemory', pageLoad: 'pageLoad',
+  duration: 'duration', eventCount: 'eventCount',
+};
+
+export interface PerfQueryOptions {
+  sort?: PerfSortKey;
+  order?: 'asc' | 'desc';
+  limit?: number;
+  filters?: { key: PerfSortKey; op: 'gt' | 'lt'; value: number }[];
+}
+
+/**
+ * Load all sessions from R2 and return summaries with performance data.
+ * Note: R2 custom metadata doesn't store perf data, so we must fetch full sessions.
+ */
+async function loadAllSessionsWithPerf(env: Env): Promise<SessionSummary[]> {
+  const summaries: SessionSummary[] = [];
+  let cursor: string | undefined;
+
+  // Paginate through all R2 objects
+  do {
+    const listed = await env.SESSIONS.list({
+      prefix: 'sessions/',
+      limit: 100,
+      cursor,
+    });
+
+    for (const obj of listed.objects) {
+      const id = obj.key.replace('sessions/', '').replace('.json', '');
+      const full = await env.SESSIONS.get(obj.key);
+      if (!full) continue;
+
+      const session = JSON.parse(await full.text()) as GremlinSession;
+      const uploadedAt = parseInt(obj.customMetadata?.uploadedAt || '0', 10);
+      summaries.push(createSessionSummary(id, session, obj.size, uploadedAt));
+    }
+
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  return summaries;
+}
+
+export async function listSessionsWithPerf(
+  env: Env,
+  opts: PerfQueryOptions
+): Promise<SessionListResult> {
+  let summaries = await loadAllSessionsWithPerf(env);
+
+  // Apply filters
+  if (opts.filters && opts.filters.length > 0) {
+    summaries = summaries.filter((s) =>
+      opts.filters!.every((f) => {
+        const val = getPerfValueFromSummary(s, f.key);
+        if (val === undefined) return false;
+        return f.op === 'gt' ? val > f.value : val < f.value;
+      })
+    );
+  }
+
+  // Sort
+  const sortKey = opts.sort ?? 'startTime';
+  const desc = (opts.order ?? 'desc') === 'desc';
+
+  summaries.sort((a, b) => {
+    const va = getPerfValueFromSummary(a, sortKey);
+    const vb = getPerfValueFromSummary(b, sortKey);
+    if (va === undefined && vb === undefined) return 0;
+    if (va === undefined) return 1;
+    if (vb === undefined) return -1;
+    return desc ? vb - va : va - vb;
+  });
+
+  const limit = opts.limit ?? 20;
+  const page = summaries.slice(0, limit);
+
+  return {
+    sessions: page,
+    hasMore: summaries.length > limit,
+    totalCount: summaries.length,
+  };
+}
+
+export function parsePerfQueryParams(query: Record<string, string>): PerfQueryOptions {
+  const opts: PerfQueryOptions = {};
+
+  if (query.sort && isValidSortKey(query.sort)) {
+    opts.sort = query.sort;
+  }
+  if (query.order === 'asc' || query.order === 'desc') {
+    opts.order = query.order;
+  }
+  if (query.limit) {
+    const parsed = parseInt(query.limit, 10);
+    if (!isNaN(parsed) && parsed > 0) opts.limit = Math.min(parsed, 100);
+  }
+
+  const filters: PerfQueryOptions['filters'] = [];
+  for (const [param, val] of Object.entries(query)) {
+    const gtMatch = param.match(/^(\w+)_gt$/);
+    const ltMatch = param.match(/^(\w+)_lt$/);
+    const match = gtMatch || ltMatch;
+    if (!match) continue;
+    const filterName = match[1];
+    const sortKey = PERF_FILTER_MAP[filterName];
+    if (!sortKey) continue;
+    const num = parseFloat(val);
+    if (isNaN(num)) continue;
+    filters.push({ key: sortKey, op: gtMatch ? 'gt' : 'lt', value: num });
+  }
+
+  if (filters.length > 0) opts.filters = filters;
+  return opts;
+}
+
+function isValidSortKey(key: string): key is PerfSortKey {
+  return [
+    'lcp', 'cls', 'inp', 'fcp', 'ttfb',
+    'avgFps', 'minFps', 'longTasks', 'peakMemory', 'pageLoad',
+    'duration', 'eventCount', 'startTime',
+  ].includes(key);
+}
+
+// ============================================================================
+// Analytics / aggregation
+// ============================================================================
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, idx)];
+}
+
+export interface PerformanceAggregation {
+  sessionCount: number;
+  sessionsWithPerf: number;
+  webVitals: {
+    lcp: { median: number; p75: number; p95: number; count: number } | null;
+    cls: { median: number; p75: number; p95: number; count: number } | null;
+    inp: { median: number; p75: number; p95: number; count: number } | null;
+    fcp: { median: number; p75: number; p95: number; count: number } | null;
+    ttfb: { median: number; p75: number; p95: number; count: number } | null;
+  };
+  fps: { avgFps: number; minFps: number; count: number } | null;
+  longTasks: { totalCount: number; totalDuration: number; avgPerSession: number; count: number } | null;
+  memory: { avgPeak: number; maxPeak: number; count: number } | null;
+  pageLoad: { median: number; p75: number; p95: number; count: number } | null;
+}
+
+function aggregateMetric(values: number[]): { median: number; p75: number; p95: number; count: number } | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return {
+    median: percentile(sorted, 50),
+    p75: percentile(sorted, 75),
+    p95: percentile(sorted, 95),
+    count: sorted.length,
+  };
+}
+
+export async function getPerformanceAggregation(
+  env: Env
+): Promise<PerformanceAggregation> {
+  const summaries = await loadAllSessionsWithPerf(env);
+
+  const lcpVals: number[] = [];
+  const clsVals: number[] = [];
+  const inpVals: number[] = [];
+  const fcpVals: number[] = [];
+  const ttfbVals: number[] = [];
+  const avgFpsVals: number[] = [];
+  const minFpsVals: number[] = [];
+  let longTaskTotal = 0;
+  let longTaskDuration = 0;
+  let longTaskSessions = 0;
+  const peakMemVals: number[] = [];
+  const pageLoadVals: number[] = [];
+  let sessionsWithPerf = 0;
+
+  for (const s of summaries) {
+    const p = s.performance;
+    if (!p) continue;
+    sessionsWithPerf++;
+
+    if (p.webVitals?.lcp !== undefined) lcpVals.push(p.webVitals.lcp);
+    if (p.webVitals?.cls !== undefined) clsVals.push(p.webVitals.cls);
+    if (p.webVitals?.inp !== undefined) inpVals.push(p.webVitals.inp);
+    if (p.webVitals?.fcp !== undefined) fcpVals.push(p.webVitals.fcp);
+    if (p.webVitals?.ttfb !== undefined) ttfbVals.push(p.webVitals.ttfb);
+    if (p.avgFps !== undefined) avgFpsVals.push(p.avgFps);
+    if (p.minFps !== undefined) minFpsVals.push(p.minFps);
+    if (p.longTaskCount !== undefined) {
+      longTaskTotal += p.longTaskCount;
+      longTaskDuration += p.longTaskTotalDuration ?? 0;
+      longTaskSessions++;
+    }
+    if (p.peakMemoryUsage !== undefined) peakMemVals.push(p.peakMemoryUsage);
+    if (p.pageLoadTime !== undefined) pageLoadVals.push(p.pageLoadTime);
+  }
+
+  return {
+    sessionCount: summaries.length,
+    sessionsWithPerf,
+    webVitals: {
+      lcp: aggregateMetric(lcpVals),
+      cls: aggregateMetric(clsVals),
+      inp: aggregateMetric(inpVals),
+      fcp: aggregateMetric(fcpVals),
+      ttfb: aggregateMetric(ttfbVals),
+    },
+    fps: avgFpsVals.length > 0 ? {
+      avgFps: avgFpsVals.reduce((a, b) => a + b, 0) / avgFpsVals.length,
+      minFps: Math.min(...minFpsVals.length > 0 ? minFpsVals : avgFpsVals),
+      count: avgFpsVals.length,
+    } : null,
+    longTasks: longTaskSessions > 0 ? {
+      totalCount: longTaskTotal,
+      totalDuration: longTaskDuration,
+      avgPerSession: longTaskTotal / longTaskSessions,
+      count: longTaskSessions,
+    } : null,
+    memory: peakMemVals.length > 0 ? {
+      avgPeak: peakMemVals.reduce((a, b) => a + b, 0) / peakMemVals.length,
+      maxPeak: Math.max(...peakMemVals),
+      count: peakMemVals.length,
+    } : null,
+    pageLoad: aggregateMetric(pageLoadVals),
+  };
+}
+
+// ============================================================================
+// Per-session performance timeline
+// ============================================================================
+
+export interface PerformanceTimeline {
+  sessionId: string;
+  summary: SessionSummary;
+  timeline: PerformanceTimelineEntry[];
+}
+
+export interface PerformanceTimelineEntry {
+  timestamp: number;
+  perf: PerformanceSample;
+}
+
+export async function getSessionPerformance(
+  env: Env,
+  id: string
+): Promise<PerformanceTimeline | null> {
+  const session = await getSession(env, id);
+  if (!session) return null;
+
+  const size = new TextEncoder().encode(JSON.stringify(session)).length;
+  const metadata = await getSessionMetadata(env, id);
+  const uploadedAt = metadata?.uploadedAt ?? 0;
+  const summary = createSessionSummary(id, session, size, uploadedAt);
+
+  const timeline: PerformanceTimelineEntry[] = [];
+  let absoluteTime = session.header.startTime;
+
+  for (const event of session.events) {
+    absoluteTime += event.dt;
+    if (event.perf) {
+      timeline.push({
+        timestamp: absoluteTime,
+        perf: event.perf,
+      });
+    }
+  }
+
+  return { sessionId: id, summary, timeline };
 }

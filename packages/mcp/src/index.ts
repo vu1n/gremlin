@@ -385,6 +385,152 @@ server.tool(
 );
 
 // ============================================================================
+// Tool: gremlin_analytics_performance
+// ============================================================================
+
+server.tool(
+  'gremlin_analytics_performance',
+  'Aggregate performance metrics (Web Vitals, FPS, memory, long tasks) across sessions with p50/p75/p95 percentiles and CWV ratings',
+  {
+    app: z.string().optional().describe('Filter by app name'),
+    since: z.string().optional().describe('Filter after this ISO date'),
+  },
+  async ({ app, since }) => {
+    const sessionsDir = gremlinPath('sessions');
+
+    if (!existsSync(sessionsDir)) {
+      return textResult({
+        totalSessions: 0,
+        sessionsWithPerf: 0,
+        webVitals: { lcp: null, cls: null, inp: null, fcp: null, ttfb: null },
+        fps: null,
+        longTasks: null,
+        memory: null,
+      });
+    }
+
+    const files = readdirSync(sessionsDir).filter((f) => f.endsWith('.json'));
+
+    interface PerfData {
+      webVitals?: { lcp?: number; cls?: number; inp?: number; fcp?: number; ttfb?: number };
+      avgFps?: number;
+      minFps?: number;
+      longTaskCount?: number;
+      longTaskTotalDuration?: number;
+      peakMemoryUsage?: number;
+      pageLoadTime?: number;
+    }
+
+    const perfEntries: PerfData[] = [];
+    let totalSessions = 0;
+    const sinceDate = since ? new Date(since).getTime() : 0;
+
+    for (const file of files) {
+      try {
+        const session = readJsonFile<GremlinSession>(join(sessionsDir, file));
+        if (!session) continue;
+
+        if (app && session.header?.app?.name !== app) continue;
+        if (sinceDate && (session.header?.startTime ?? 0) < sinceDate) continue;
+
+        totalSessions++;
+        if (session.performance) {
+          perfEntries.push(session.performance);
+        }
+      } catch {
+        // skip
+      }
+    }
+
+    if (perfEntries.length === 0) {
+      return textResult({
+        totalSessions,
+        sessionsWithPerf: 0,
+        webVitals: { lcp: null, cls: null, inp: null, fcp: null, ttfb: null },
+        fps: null,
+        longTasks: null,
+        memory: null,
+      });
+    }
+
+    // Collect metric arrays
+    const collect = (fn: (p: PerfData) => number | undefined): number[] => {
+      const vals: number[] = [];
+      for (const p of perfEntries) {
+        const v = fn(p);
+        if (v !== undefined) vals.push(v);
+      }
+      return vals;
+    };
+
+    const pct = (sorted: number[], p: number): number => {
+      if (sorted.length === 0) return 0;
+      const idx = Math.ceil((p / 100) * sorted.length) - 1;
+      return sorted[Math.max(0, idx)];
+    };
+
+    // CWV thresholds: [good, needs-improvement]
+    const cwvThresholds: Record<string, [number, number]> = {
+      lcp: [2500, 4000], cls: [0.1, 0.25], inp: [200, 500],
+      fcp: [1800, 3000], ttfb: [800, 1800],
+    };
+
+    const computeVital = (values: number[], name: string) => {
+      if (values.length === 0) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const p75 = pct(sorted, 75);
+      const th = cwvThresholds[name];
+      let rating: 'good' | 'needs-improvement' | 'poor' = 'good';
+      if (th) {
+        if (p75 > th[1]) rating = 'poor';
+        else if (p75 > th[0]) rating = 'needs-improvement';
+      }
+      return { p50: pct(sorted, 50), p75, p95: pct(sorted, 95), rating };
+    };
+
+    const fpsValues = collect((p) => p.avgFps);
+    const minFpsValues = collect((p) => p.minFps);
+    const longTaskCounts = collect((p) => p.longTaskCount);
+    const memoryValues = collect((p) => p.peakMemoryUsage);
+
+    let fps = null;
+    if (fpsValues.length > 0) {
+      const avg = fpsValues.reduce((a, b) => a + b, 0) / fpsValues.length;
+      const min = minFpsValues.length > 0 ? Math.min(...minFpsValues) : Math.min(...fpsValues);
+      const sortedFps = [...fpsValues].sort((a, b) => a - b);
+      fps = { avg, min, p5: pct(sortedFps, 5) };
+    }
+
+    let longTasks = null;
+    if (longTaskCounts.length > 0) {
+      const total = longTaskCounts.reduce((a, b) => a + b, 0);
+      longTasks = { total, avgPerSession: total / longTaskCounts.length };
+    }
+
+    let memory = null;
+    if (memoryValues.length > 0) {
+      const avg = memoryValues.reduce((a, b) => a + b, 0) / memoryValues.length;
+      memory = { avg, peak: Math.max(...memoryValues) };
+    }
+
+    return textResult({
+      totalSessions,
+      sessionsWithPerf: perfEntries.length,
+      webVitals: {
+        lcp: computeVital(collect((p) => p.webVitals?.lcp), 'lcp'),
+        cls: computeVital(collect((p) => p.webVitals?.cls), 'cls'),
+        inp: computeVital(collect((p) => p.webVitals?.inp), 'inp'),
+        fcp: computeVital(collect((p) => p.webVitals?.fcp), 'fcp'),
+        ttfb: computeVital(collect((p) => p.webVitals?.ttfb), 'ttfb'),
+      },
+      fps,
+      longTasks,
+      memory,
+    });
+  }
+);
+
+// ============================================================================
 // Tool: gremlin_generate_tests
 // ============================================================================
 

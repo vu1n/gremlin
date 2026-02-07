@@ -10,7 +10,7 @@ import { run } from './commands/run.ts';
 import { listSessions } from './commands/sessions.ts';
 import { init } from './commands/init.ts';
 import { status } from './commands/status.ts';
-import { analyticsSummary, analyticsErrors } from './commands/analytics.ts';
+import { analyticsSummary, analyticsErrors, analyticsPerformance } from './commands/analytics.ts';
 import { analyze } from './commands/analyze.ts';
 import { deployLocal, deployDocker, deployStatus, deployStop } from './commands/deploy.ts';
 
@@ -187,11 +187,21 @@ program
   .description('List recorded sessions')
   .option('-i, --input <path>', 'Input sessions directory', '.gremlin/sessions')
   .option('-l, --limit <number>', 'Max sessions to list', '20')
+  .option('--sort <metric>', 'Sort by: lcp, cls, inp, fcp, ttfb, fps, longTasks, memory, duration (default: time)')
+  .option('--lcp-gt <ms>', 'Filter sessions where LCP exceeds threshold (ms)')
+  .option('--cls-gt <value>', 'Filter sessions where CLS exceeds threshold')
+  .option('--fps-lt <number>', 'Filter sessions where avgFps is below threshold')
+  .option('--slow', 'Sessions failing Core Web Vitals (LCP>2500 OR CLS>0.25 OR INP>200)')
   .action(async (options) => {
     const json = program.opts().json;
     await listSessions({
       input: options.input,
       limit: parseInt(options.limit, 10),
+      sort: options.sort,
+      lcpGt: options.lcpGt ? parseFloat(options.lcpGt) : undefined,
+      clsGt: options.clsGt ? parseFloat(options.clsGt) : undefined,
+      fpsLt: options.fpsLt ? parseFloat(options.fpsLt) : undefined,
+      slow: options.slow,
       json,
     });
   });
@@ -328,6 +338,20 @@ analyticsCmd
   .action(async (options) => {
     const json = program.opts().json;
     await analyticsErrors({
+      app: options.app,
+      since: options.since,
+      json,
+    });
+  });
+
+analyticsCmd
+  .command('performance')
+  .description('Performance metrics across sessions (Web Vitals, FPS, memory)')
+  .option('--app <name>', 'Filter by app name')
+  .option('--since <date>', 'Filter by date (ISO)')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await analyticsPerformance({
       app: options.app,
       since: options.since,
       json,
