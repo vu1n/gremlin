@@ -8,3 +8,4 @@ export * from './playwright';
 export * from './maestro';
 export * from './fuzz';
 export * from './perf-test-generator';
+export * from './error-regression-generator';

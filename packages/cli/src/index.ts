@@ -14,6 +14,7 @@ import { analyticsSummary, analyticsErrors, analyticsPerformance } from './comma
 import { analyze } from './commands/analyze.ts';
 import { deployLocal, deployDocker, deployStatus, deployStop } from './commands/deploy.ts';
 import { perfBaseline } from './commands/perf-baseline.ts';
+import { errors } from './commands/errors.ts';
 
 const program = new Command();
 
@@ -223,6 +224,8 @@ program
   .option('--app-id <id>', 'App ID for mobile tests', 'com.example.app')
   .option('--provider <name>', 'AI provider: anthropic, openai, gemini')
   .option('--perf', 'Generate performance regression tests from baseline')
+  .option('--errors', 'Generate error regression tests from session error patterns')
+  .option('--min-occurrences <n>', 'Minimum error occurrences to generate tests (default: 1)')
   .action(async (options) => {
     const json = program.opts().json;
     await generate({
@@ -232,6 +235,8 @@ program
       playwright: options.playwright,
       maestro: options.maestro,
       perf: options.perf,
+      errors: options.errors,
+      minOccurrences: options.minOccurrences ? parseInt(options.minOccurrences, 10) : undefined,
       baseUrl: options.baseUrl,
       appId: options.appId,
       provider: options.provider,
@@ -463,6 +468,28 @@ program
       input: options.input,
       margin: parseFloat(options.margin),
       update: options.update,
+      json,
+    });
+  });
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+program
+  .command('errors')
+  .description('List error patterns across sessions and check test coverage')
+  .option('-i, --input <path>', 'Input sessions directory', '.gremlin/sessions')
+  .option('--min-occurrences <n>', 'Minimum occurrences to show (default: 1)')
+  .option('--since <date>', 'Filter sessions after this ISO date')
+  .option('--generate', 'Generate error regression tests (shorthand for generate --errors)')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await errors({
+      input: options.input,
+      minOccurrences: options.minOccurrences ? parseInt(options.minOccurrences, 10) : undefined,
+      since: options.since,
+      generate: options.generate,
       json,
     });
   });

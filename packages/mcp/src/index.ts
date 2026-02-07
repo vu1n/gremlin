@@ -889,6 +889,56 @@ server.tool(
 );
 
 // ============================================================================
+// Tool: gremlin_error_patterns
+// ============================================================================
+
+server.tool(
+  'gremlin_error_patterns',
+  'List deduplicated error patterns across sessions with occurrence counts and test coverage status',
+  {
+    minOccurrences: z.number().optional().describe('Minimum error occurrences to include (default 1)'),
+    since: z.string().optional().describe('Filter sessions after this ISO date'),
+  },
+  async ({ minOccurrences, since }) => {
+    const args: string[] = ['errors'];
+    if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
+    if (since) args.push(`--since ${since}`);
+
+    const result = runCliCommand(args.join(' '));
+
+    try {
+      return textResult(JSON.parse(result));
+    } catch {
+      return textResult({ output: result });
+    }
+  }
+);
+
+// ============================================================================
+// Tool: gremlin_generate_error_tests
+// ============================================================================
+
+server.tool(
+  'gremlin_generate_error_tests',
+  'Generate Playwright error regression tests from session error patterns',
+  {
+    minOccurrences: z.number().optional().describe('Minimum error occurrences to generate tests for (default 1)'),
+  },
+  async ({ minOccurrences }) => {
+    const args: string[] = ['generate', '--errors'];
+    if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
+
+    const result = runCliCommand(args.join(' '));
+
+    try {
+      return textResult(JSON.parse(result));
+    } catch {
+      return textResult({ output: result });
+    }
+  }
+);
+
+// ============================================================================
 // Start Server
 // ============================================================================
 

@@ -130,6 +130,13 @@ gremlin generate --perf --json      # Generate Playwright perf tests
 gremlin run --perf --json           # Run perf tests, detect regressions
 ```
 
+### Error regression testing
+```bash
+gremlin errors --json               # List error patterns across sessions
+gremlin generate --errors --json    # Generate regression tests for errors
+gremlin run --json                  # Run all tests including error regressions
+```
+
 ## MCP Integration (optional)
 
 For direct tool access without CLI subprocess spawning, add to your MCP config:
@@ -145,7 +152,7 @@ For direct tool access without CLI subprocess spawning, add to your MCP config:
 }
 ```
 
-Tools: `gremlin_status`, `gremlin_analyze`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`, `gremlin_perf_baseline`, `gremlin_generate_perf_tests`, `gremlin_run_perf_tests`.
+Tools: `gremlin_status`, `gremlin_analyze`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`, `gremlin_perf_baseline`, `gremlin_generate_perf_tests`, `gremlin_run_perf_tests`, `gremlin_error_patterns`, `gremlin_generate_error_tests`.
 
 ## Command Reference
 
@@ -169,6 +176,9 @@ All commands support `--json` for machine-readable output. JSON output uses enve
 | `gremlin deploy status` | Check deployments |
 | `gremlin deploy stop` | Stop deployments |
 | `gremlin import` | Import sessions from PostHog or rrweb files |
+| `gremlin errors` | List error patterns across sessions |
+| `gremlin errors --generate` | Generate error regression tests |
+| `gremlin generate --errors` | Generate error regression tests |
 | `gremlin perf-baseline` | Snapshot current perf metrics as baseline |
 | `gremlin generate --perf` | Generate perf regression tests |
 | `gremlin run --perf` | Run perf tests, compare against baseline |

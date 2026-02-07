@@ -34,6 +34,9 @@ All commands support `--json` for machine-readable output.
 | `gremlin run` | Run tests | `{ runners: [{name,dir,exitCode}], passed }` |
 | `gremlin instrument` | Instrumentation guide | `{ framework, content, entryPoint, installCommand }` |
 | `gremlin import` | Import sessions | `{ source, imported, failed, sessions[] }` |
+| `gremlin errors` | Error patterns + coverage | `{ patterns: [...], totalErrors, uniquePatterns, coveredByTests, uncoveredPatterns }` |
+| `gremlin errors --generate` | Generate error regression tests | `{ errorPatterns: [...], tests: [...], outputDir }` |
+| `gremlin generate --errors` | Generate error regression tests | `{ errorPatterns: [...], tests: [...], outputDir }` |
 | `gremlin analytics summary` | Aggregate stats | `{ totalSessions, totalEvents, totalErrors, avgDuration, platforms, topScreens }` |
 | `gremlin analytics errors` | Error breakdown | `{ totalErrors, errorsByType, errors[] }` |
 | `gremlin deploy local` | Start local server | `{ status, port, url, pid? }` |
@@ -172,6 +175,25 @@ gremlin run --perf --json
 | `gremlin generate --perf` | Generate perf tests | `{ perfTests: [{flowName, path, stepCount}], outputDir, baselineUsed }` |
 | `gremlin run --perf` | Run perf tests vs baseline | `{ flows: [{name, passed, metrics}], allPassed }` |
 
+## Workflow: Error Regression Testing
+
+```bash
+# 1. List error patterns across sessions (deduplicated, with test coverage status)
+gremlin errors --json
+
+# 2. Generate regression tests for error patterns
+gremlin generate --errors --json
+# Or: gremlin errors --generate --json
+
+# 3. Run all tests including error regressions
+gremlin run --json
+```
+
+| Command | Description | Key JSON fields |
+|---------|-------------|-----------------|
+| `gremlin errors` | List error patterns + coverage | `{ patterns: [{fingerprint, message, errorType, occurrences, sessionIds, coveredByTest}], totalErrors, uniquePatterns, coveredByTests, uncoveredPatterns }` |
+| `gremlin generate --errors` | Generate error regression tests | `{ errorPatterns: [{fingerprint, message, errorType, occurrences, sessionIds}], tests: [{name, path, type}], outputDir }` |
+
 ## MCP Server Setup
 
 For direct tool integration (no subprocess spawning):
@@ -187,7 +209,7 @@ For direct tool integration (no subprocess spawning):
 }
 ```
 
-Available tools: `gremlin_status`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_analyze`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`, `gremlin_perf_baseline`, `gremlin_generate_perf_tests`, `gremlin_run_perf_tests`.
+Available tools: `gremlin_status`, `gremlin_sessions_list`, `gremlin_session_get`, `gremlin_analytics_summary`, `gremlin_analyze`, `gremlin_generate_tests`, `gremlin_run_tests`, `gremlin_instrument_info`, `gremlin_init`, `gremlin_perf_baseline`, `gremlin_generate_perf_tests`, `gremlin_run_perf_tests`, `gremlin_error_patterns`, `gremlin_generate_error_tests`.
 
 Resources: `gremlin://config`, `gremlin://sessions/{id}`, `gremlin://spec`, `gremlin://llms.txt`.
 

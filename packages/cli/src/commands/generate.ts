@@ -14,10 +14,12 @@ import {
   generateMaestroFlows,
   generateMaestroTestSuite,
   generatePerfTests,
+  generateErrorTests,
 } from '@gremlin/analysis';
 import type {
   PerfBaseline as AnalysisPerfBaseline,
   PerfTestResult,
+  ErrorTestResult,
 } from '@gremlin/analysis';
 import { output, outputError, type OutputOptions } from '../output.ts';
 import { readBaseline } from '../perf-baseline-types.ts';
@@ -33,6 +35,8 @@ export interface GenerateOptions extends OutputOptions {
   playwright?: boolean;
   maestro?: boolean;
   perf?: boolean;
+  errors?: boolean;
+  minOccurrences?: number;
   spec?: string;
   baseUrl?: string;
   appId?: string;
@@ -57,14 +61,31 @@ export interface GeneratePerfResult {
   baselineUsed: boolean;
 }
 
+export interface GenerateErrorsResult {
+  errorPatterns: Array<{
+    fingerprint: string;
+    message: string;
+    errorType: string;
+    occurrences: number;
+    sessionIds: string[];
+  }>;
+  tests: Array<{ name: string; path: string; type: string }>;
+  outputDir: string;
+}
+
 // ============================================================================
 // Main Command
 // ============================================================================
 
-export async function generate(options: GenerateOptions): Promise<GenerateResult | GeneratePerfResult | null> {
+export async function generate(options: GenerateOptions): Promise<GenerateResult | GeneratePerfResult | GenerateErrorsResult | null> {
   // Handle --perf mode separately
   if (options.perf) {
     return generatePerf(options);
+  }
+
+  // Handle --errors mode separately
+  if (options.errors) {
+    return generateErrorsCmd(options);
   }
 
   const {
@@ -387,6 +408,97 @@ async function generatePerf(options: GenerateOptions): Promise<GeneratePerfResul
   console.log('');
   console.log('Next steps:');
   console.log(`  Run perf tests: gremlin run --perf`);
+
+  return result;
+}
+
+// ============================================================================
+// Error Test Generation
+// ============================================================================
+
+async function generateErrorsCmd(options: GenerateOptions): Promise<GenerateErrorsResult | null> {
+  const {
+    input = '.gremlin/sessions',
+    minOccurrences = 1,
+    json,
+  } = options;
+  const errOutputDir = '.gremlin/tests/error-regression';
+
+  if (!existsSync(input)) {
+    if (outputError('generate', [`Sessions directory not found: ${input}`], options)) {
+      process.exit(1);
+    }
+    console.error(`Sessions directory not found: ${input}`);
+    process.exit(1);
+  }
+
+  const sessions = await loadSessions(input);
+  if (sessions.length === 0) {
+    if (outputError('generate', ['No sessions found'], options)) {
+      process.exit(1);
+    }
+    console.error('No sessions found');
+    process.exit(1);
+  }
+
+  if (!json) {
+    console.log('Gremlin Error Regression Test Generator');
+    console.log('');
+    console.log(`Sessions: ${sessions.length}`);
+    console.log(`Min occurrences: ${minOccurrences}`);
+    console.log('');
+    console.log('Extracting error patterns...');
+  }
+
+  const errorResult: ErrorTestResult = generateErrorTests({
+    sessions,
+    outputDir: errOutputDir,
+    minOccurrences,
+  });
+
+  const result: GenerateErrorsResult = {
+    errorPatterns: errorResult.patterns.map((p) => ({
+      fingerprint: p.fingerprint,
+      message: p.message,
+      errorType: p.errorType,
+      occurrences: p.occurrences,
+      sessionIds: p.sessionIds,
+    })),
+    tests: errorResult.tests.map((t) => ({
+      name: t.name,
+      path: t.path,
+      type: t.type,
+    })),
+    outputDir: errorResult.outputDir,
+  };
+
+  if (output('generate', result, options)) return result;
+
+  // Human-readable output
+  console.log('');
+  if (errorResult.patterns.length === 0) {
+    console.log('No error patterns found.');
+  } else {
+    console.log(`Found ${errorResult.patterns.length} error pattern(s):`);
+    for (const p of errorResult.patterns) {
+      const fatalTag = p.fatal ? ' [FATAL]' : '';
+      console.log(`  ${p.errorType}${fatalTag}: ${p.message} (${p.occurrences} occurrences)`);
+    }
+  }
+
+  console.log('');
+  if (errorResult.tests.length === 0) {
+    console.log('No tests generated.');
+  } else {
+    console.log(`Generated ${errorResult.tests.length} test(s):`);
+    for (const t of errorResult.tests) {
+      console.log(`  ${t.type}: ${t.name} -> ${t.path}`);
+    }
+  }
+
+  console.log('');
+  console.log('Next steps:');
+  console.log('  gremlin run --json');
 
   return result;
 }
