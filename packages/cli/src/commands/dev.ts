@@ -20,12 +20,13 @@ import {
 import { join } from 'path';
 import { networkInterfaces } from 'os';
 import type { GremlinSession, SessionAnalytics } from '@gremlin/session';
+import { outputNdjson, type OutputOptions } from '../output.ts';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface DevOptions {
+export interface DevOptions extends OutputOptions {
   /** Port for dev server */
   port?: number;
 
@@ -45,32 +46,42 @@ export async function dev(options: DevOptions): Promise<void> {
   const output = options.output ?? '.gremlin/sessions';
   const analyticsDir = '.gremlin/analytics';
   const verbose = options.verbose ?? false;
+  const jsonMode = options.json ?? false;
 
   // Ensure directories exist
   ensureDir(output);
   ensureDir(analyticsDir);
 
-  console.log('');
-  console.log('  Gremlin Dev Server');
-  console.log('  ==================');
-  console.log('');
-  console.log(`  Status:     Running`);
-  console.log(`  Port:       ${port}`);
-  console.log(`  Sessions:   ${output}/`);
-  console.log('');
-
-  // Get local IP for RN connections
   const localIP = getLocalIP();
-  console.log('  Endpoints:');
-  console.log(`    Local:    http://localhost:${port}`);
-  if (localIP) {
-    console.log(`    Network:  http://${localIP}:${port}  (for React Native)`);
+
+  if (jsonMode) {
+    outputNdjson({
+      event: 'server_started',
+      port,
+      url: `http://localhost:${port}`,
+      networkUrl: localIP ? `http://${localIP}:${port}` : null,
+      sessionsDir: output,
+    });
+  } else {
+    console.log('');
+    console.log('  Gremlin Dev Server');
+    console.log('  ==================');
+    console.log('');
+    console.log(`  Status:     Running`);
+    console.log(`  Port:       ${port}`);
+    console.log(`  Sessions:   ${output}/`);
+    console.log('');
+    console.log('  Endpoints:');
+    console.log(`    Local:    http://localhost:${port}`);
+    if (localIP) {
+      console.log(`    Network:  http://${localIP}:${port}  (for React Native)`);
+    }
+    console.log('');
+    logSessionSummary(output);
+    console.log('  Waiting for sessions...');
+    console.log('  ' + '─'.repeat(40));
+    console.log('');
   }
-  console.log('');
-  logSessionSummary(output);
-  console.log('  Waiting for sessions...');
-  console.log('  ' + '─'.repeat(40));
-  console.log('');
 
   let sessionCount = 0;
 
@@ -153,7 +164,19 @@ export async function dev(options: DevOptions): Promise<void> {
           renameSync(analyticsTemp, analyticsFile);
 
           // Log to console
-          logSession(session, sessionCount, verbose);
+          if (jsonMode) {
+            outputNdjson({
+              event: 'session_received',
+              sessionId: session.header.sessionId,
+              app: session.header.app?.name || 'unknown',
+              platform: session.header.device?.platform || 'unknown',
+              eventCount: session.events?.length || 0,
+              rrwebEventCount: session.rrwebEvents?.length || 0,
+              savedTo: sessionFile,
+            });
+          } else {
+            logSession(session, sessionCount, verbose);
+          }
 
           return new Response(
             JSON.stringify({
@@ -166,7 +189,7 @@ export async function dev(options: DevOptions): Promise<void> {
             }
           );
         } catch (err) {
-          console.error('  Error processing session:', err);
+          if (!jsonMode) console.error('  Error processing session:', err);
           return new Response(
             JSON.stringify({ error: 'Failed to process session' }),
             {
@@ -201,7 +224,6 @@ export async function dev(options: DevOptions): Promise<void> {
             const content = await Bun.file(sessionFile).text();
             session = JSON.parse(content);
           } else {
-            // Stub session for incremental batch uploads - full header comes from client
             session = {
               header: { sessionId, startTime: Date.now() },
               events: [],
@@ -223,7 +245,7 @@ export async function dev(options: DevOptions): Promise<void> {
           writeFileSync(tempFile, JSON.stringify(session, null, 2));
           renameSync(tempFile, sessionFile);
 
-          if (verbose) {
+          if (verbose && !jsonMode) {
             console.log(`  [append] ${sessionId}: +${events?.length || 0} events, +${rrwebEvents?.length || 0} rrweb`);
           }
 
@@ -234,7 +256,7 @@ export async function dev(options: DevOptions): Promise<void> {
             }
           );
         } catch (err) {
-          console.error('  Error appending to session:', err);
+          if (!jsonMode) console.error('  Error appending to session:', err);
           return new Response(
             JSON.stringify({ error: 'Failed to append to session' }),
             {
@@ -279,8 +301,10 @@ export async function dev(options: DevOptions): Promise<void> {
     },
   });
 
-  console.log('  Press Ctrl+C to stop the server');
-  console.log('');
+  if (!jsonMode) {
+    console.log('  Press Ctrl+C to stop the server');
+    console.log('');
+  }
 
   // Keep server running
   await new Promise(() => {});

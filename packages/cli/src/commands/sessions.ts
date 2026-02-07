@@ -5,8 +5,9 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSession } from '@gremlin/session';
+import { output, outputError, type OutputOptions } from '../output.ts';
 
-export interface SessionsOptions {
+export interface SessionsOptions extends OutputOptions {
   /** Input directory for sessions */
   input?: string;
 
@@ -14,7 +15,7 @@ export interface SessionsOptions {
   limit?: number;
 }
 
-interface SessionSummary {
+export interface SessionSummary {
   id: string;
   appName: string;
   platform: string;
@@ -22,20 +23,30 @@ interface SessionSummary {
   startTime: number;
 }
 
-export async function listSessions(options: SessionsOptions): Promise<void> {
+export interface SessionsResult {
+  sessions: SessionSummary[];
+  total: number;
+  directory: string;
+}
+
+export async function listSessions(options: SessionsOptions): Promise<SessionsResult> {
   const input = options.input ?? '.gremlin/sessions';
   const limit = options.limit ?? 20;
 
   if (!existsSync(input)) {
+    const result: SessionsResult = { sessions: [], total: 0, directory: input };
+    if (output('sessions', result, options)) return result;
     console.log(`No sessions found. Directory does not exist: ${input}`);
-    return;
+    return result;
   }
 
   const files = readdirSync(input).filter((file) => file.endsWith('.json'));
 
   if (files.length === 0) {
+    const result: SessionsResult = { sessions: [], total: 0, directory: input };
+    if (output('sessions', result, options)) return result;
     console.log(`No sessions found in ${input}`);
-    return;
+    return result;
   }
 
   const summaries: SessionSummary[] = [];
@@ -58,6 +69,14 @@ export async function listSessions(options: SessionsOptions): Promise<void> {
 
   summaries.sort((a, b) => b.startTime - a.startTime);
 
+  const result: SessionsResult = {
+    sessions: summaries.slice(0, limit),
+    total: summaries.length,
+    directory: input,
+  };
+
+  if (output('sessions', result, options)) return result;
+
   console.log(`Found ${summaries.length} sessions in ${input}`);
 
   for (const summary of summaries.slice(0, limit)) {
@@ -68,4 +87,6 @@ export async function listSessions(options: SessionsOptions): Promise<void> {
       `- ${summary.id} | ${summary.appName} | ${summary.platform} | ${summary.eventCount} events | ${timestamp}`
     );
   }
+
+  return result;
 }

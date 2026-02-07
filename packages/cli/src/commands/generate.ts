@@ -14,12 +14,13 @@ import {
   generateMaestroFlows,
   generateMaestroTestSuite,
 } from '@gremlin/analysis';
+import { output, outputError, type OutputOptions } from '../output.ts';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface GenerateOptions {
+export interface GenerateOptions extends OutputOptions {
   input?: string;
   output?: string;
   playwright?: boolean;
@@ -30,64 +31,87 @@ export interface GenerateOptions {
   provider?: 'anthropic' | 'openai' | 'gemini';
 }
 
+export interface GenerateResult {
+  spec: {
+    states: number;
+    transitions: number;
+    variables: number;
+    properties: number;
+  };
+  specPath: string;
+  tests: { type: string; path: string; count: number }[];
+  provider: string;
+}
+
 // ============================================================================
 // Main Command
 // ============================================================================
 
-export async function generate(options: GenerateOptions): Promise<void> {
-  console.log('🧪 Gremlin Test Generator');
-  console.log('');
-
+export async function generate(options: GenerateOptions): Promise<GenerateResult | null> {
   const {
     input = '.gremlin/sessions',
-    output = '.gremlin/tests',
+    output: outputDir = '.gremlin/tests',
     playwright = true,
     maestro = false,
     spec: specPath,
     baseUrl = 'http://localhost:3000',
     appId = 'com.example.app',
     provider = detectProvider(),
+    json,
   } = options;
 
   // Get API key from environment
   const apiKey = getApiKey(provider);
   if (!apiKey) {
-    console.error(`❌ No API key found for ${provider}`);
+    if (outputError('generate', [`No API key found for ${provider}. Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY`], options)) {
+      process.exit(1);
+    }
+    console.error(`No API key found for ${provider}`);
     console.error('Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY');
     process.exit(1);
   }
 
-  console.log(`📊 Provider: ${provider}`);
+  if (!json) {
+    console.log('Gremlin Test Generator');
+    console.log('');
+    console.log(`Provider: ${provider}`);
+  }
 
   let gremlinSpec: GremlinSpec;
 
   // Load or generate spec
   if (specPath && existsSync(specPath)) {
-    console.log(`📂 Loading spec from: ${specPath}`);
+    if (!json) console.log(`Loading spec from: ${specPath}`);
     const specJson = await Bun.file(specPath).text();
     gremlinSpec = JSON.parse(specJson);
-    console.log(`   Found ${gremlinSpec.states.length} states, ${gremlinSpec.transitions.length} transitions`);
+    if (!json) console.log(`   Found ${gremlinSpec.states.length} states, ${gremlinSpec.transitions.length} transitions`);
   } else {
-    // Load sessions and analyze with AI
-    console.log(`📂 Loading sessions from: ${input}`);
+    if (!json) console.log(`Loading sessions from: ${input}`);
 
     if (!existsSync(input)) {
-      console.error(`❌ Sessions directory not found: ${input}`);
+      if (outputError('generate', [`Sessions directory not found: ${input}`], options)) {
+        process.exit(1);
+      }
+      console.error(`Sessions directory not found: ${input}`);
       console.error('Run "gremlin record" first or specify --input path');
       process.exit(1);
     }
 
     const sessions = await loadSessions(input);
-    console.log(`   Found ${sessions.length} sessions`);
+    if (!json) console.log(`   Found ${sessions.length} sessions`);
 
     if (sessions.length === 0) {
-      console.error('❌ No sessions found');
+      if (outputError('generate', ['No sessions found'], options)) {
+        process.exit(1);
+      }
+      console.error('No sessions found');
       process.exit(1);
     }
 
-    // Analyze with AI
-    console.log('');
-    console.log('🤖 Analyzing sessions with AI...');
+    if (!json) {
+      console.log('');
+      console.log('Analyzing sessions with AI...');
+    }
 
     gremlinSpec = await analyzeFlows(sessions, {
       provider,
@@ -96,23 +120,28 @@ export async function generate(options: GenerateOptions): Promise<void> {
       platform: 'web',
     });
 
-    console.log(`   Extracted ${gremlinSpec.states.length} states`);
-    console.log(`   Extracted ${gremlinSpec.transitions.length} transitions`);
-    console.log(`   Extracted ${gremlinSpec.variables.length} variables`);
-    console.log(`   Extracted ${gremlinSpec.properties.length} properties`);
+    if (!json) {
+      console.log(`   Extracted ${gremlinSpec.states.length} states`);
+      console.log(`   Extracted ${gremlinSpec.transitions.length} transitions`);
+      console.log(`   Extracted ${gremlinSpec.variables.length} variables`);
+      console.log(`   Extracted ${gremlinSpec.properties.length} properties`);
+    }
 
     // Save spec
-    const specOutputPath = join(output, 'spec.json');
-    ensureDir(output);
+    const specOutputPath = join(outputDir, 'spec.json');
+    ensureDir(outputDir);
     writeFileSync(specOutputPath, JSON.stringify(gremlinSpec, null, 2));
-    console.log(`   Saved spec to: ${specOutputPath}`);
+    if (!json) console.log(`   Saved spec to: ${specOutputPath}`);
   }
 
   // Generate tests
-  console.log('');
+  const tests: { type: string; path: string; count: number }[] = [];
 
   if (playwright) {
-    console.log('🎭 Generating Playwright tests...');
+    if (!json) {
+      console.log('');
+      console.log('Generating Playwright tests...');
+    }
 
     const playwrightCode = generatePlaywrightTests(gremlinSpec, {
       baseUrl,
@@ -122,14 +151,18 @@ export async function generate(options: GenerateOptions): Promise<void> {
       groupBy: 'flow',
     });
 
-    const playwrightPath = join(output, 'playwright', 'generated.spec.ts');
-    ensureDir(join(output, 'playwright'));
+    const playwrightPath = join(outputDir, 'playwright', 'generated.spec.ts');
+    ensureDir(join(outputDir, 'playwright'));
     writeFileSync(playwrightPath, playwrightCode);
-    console.log(`   Saved to: ${playwrightPath}`);
+    tests.push({ type: 'playwright', path: playwrightPath, count: 1 });
+    if (!json) console.log(`   Saved to: ${playwrightPath}`);
   }
 
   if (maestro) {
-    console.log('📱 Generating Maestro flows...');
+    if (!json) {
+      console.log('');
+      console.log('Generating Maestro flows...');
+    }
 
     const flows = generateMaestroFlows(gremlinSpec, {
       appId,
@@ -138,36 +171,52 @@ export async function generate(options: GenerateOptions): Promise<void> {
       platform: 'ios',
     });
 
-    const maestroDir = join(output, 'maestro');
+    const maestroDir = join(outputDir, 'maestro');
     ensureDir(maestroDir);
 
     for (const flow of flows) {
       const flowPath = join(maestroDir, flow.fileName);
       writeFileSync(flowPath, flow.yaml);
-      console.log(`   Saved flow: ${flow.fileName}`);
+      if (!json) console.log(`   Saved flow: ${flow.fileName}`);
     }
 
-    // Also generate combined suite
     const suitePath = join(maestroDir, 'suite.yaml');
     const suiteYaml = generateMaestroTestSuite(gremlinSpec, {
       appId,
       includeComments: true,
     });
     writeFileSync(suitePath, suiteYaml);
-    console.log(`   Saved suite: suite.yaml`);
+    tests.push({ type: 'maestro', path: maestroDir, count: flows.length });
+    if (!json) console.log(`   Saved suite: suite.yaml`);
   }
 
+  const result: GenerateResult = {
+    spec: {
+      states: gremlinSpec.states.length,
+      transitions: gremlinSpec.transitions.length,
+      variables: gremlinSpec.variables.length,
+      properties: gremlinSpec.properties.length,
+    },
+    specPath: join(outputDir, 'spec.json'),
+    tests,
+    provider,
+  };
+
+  if (output('generate', result, options)) return result;
+
   console.log('');
-  console.log('✅ Test generation complete!');
+  console.log('Test generation complete!');
   console.log('');
   console.log('Next steps:');
 
   if (playwright) {
-    console.log(`  • Run Playwright tests: npx playwright test ${join(output, 'playwright')}`);
+    console.log(`  Run Playwright tests: npx playwright test ${join(outputDir, 'playwright')}`);
   }
   if (maestro) {
-    console.log(`  • Run Maestro tests: maestro test ${join(output, 'maestro')}`);
+    console.log(`  Run Maestro tests: maestro test ${join(outputDir, 'maestro')}`);
   }
+
+  return result;
 }
 
 // ============================================================================

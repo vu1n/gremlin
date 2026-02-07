@@ -8,12 +8,13 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSpec, FuzzStrategy } from '@gremlin/analysis';
 import { generateFuzzTests, fuzzTestsToPlaywrightFile } from '@gremlin/analysis';
+import { output, outputError, type OutputOptions } from '../output.ts';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface FuzzOptions {
+export interface FuzzOptions extends OutputOptions {
   spec?: string;
   output?: string;
   strategy?: string;
@@ -21,27 +22,39 @@ export interface FuzzOptions {
   seed?: number;
 }
 
+export interface FuzzResult {
+  testCount: number;
+  strategies: string[];
+  outputPath: string;
+  seed: number;
+  bugCategories: string[];
+}
+
 // ============================================================================
 // Main Command
 // ============================================================================
 
-export async function fuzz(options: FuzzOptions): Promise<void> {
-  console.log('🎲 Gremlin Fuzz Test Generator');
-  console.log('');
-
+export async function fuzz(options: FuzzOptions): Promise<FuzzResult | null> {
   const {
     spec: specPath = '.gremlin/tests/spec.json',
-    output = '.gremlin/tests/fuzz',
+    output: outputDir = '.gremlin/tests/fuzz',
     strategy = 'all',
     count = 10,
     seed = Date.now(),
+    json,
   } = options;
 
-  // Load spec
-  console.log(`📂 Loading spec from: ${specPath}`);
+  if (!json) {
+    console.log('Gremlin Fuzz Test Generator');
+    console.log('');
+    console.log(`Loading spec from: ${specPath}`);
+  }
 
   if (!existsSync(specPath)) {
-    console.error(`❌ Spec file not found: ${specPath}`);
+    if (outputError('fuzz', [`Spec file not found: ${specPath}. Run "gremlin generate" first.`], options)) {
+      process.exit(1);
+    }
+    console.error(`Spec file not found: ${specPath}`);
     console.error('Run "gremlin generate" first to create a spec, or use --spec to specify a path');
     process.exit(1);
   }
@@ -50,21 +63,25 @@ export async function fuzz(options: FuzzOptions): Promise<void> {
   try {
     const specJson = await Bun.file(specPath).text();
     gremlinSpec = JSON.parse(specJson);
-    console.log(`   Found ${gremlinSpec.states.length} states, ${gremlinSpec.transitions.length} transitions`);
+    if (!json) console.log(`   Found ${gremlinSpec.states.length} states, ${gremlinSpec.transitions.length} transitions`);
   } catch (e) {
-    console.error(`❌ Failed to load spec: ${e}`);
+    if (outputError('fuzz', [`Failed to load spec: ${e}`], options)) {
+      process.exit(1);
+    }
+    console.error(`Failed to load spec: ${e}`);
     process.exit(1);
   }
 
   // Parse strategies
   const strategies = parseStrategies(strategy);
-  console.log('');
-  console.log(`🎯 Fuzzing strategies: ${strategies.join(', ')}`);
-  console.log(`   Generating ${count} tests with seed ${seed}`);
-  console.log('');
+  if (!json) {
+    console.log('');
+    console.log(`Fuzzing strategies: ${strategies.join(', ')}`);
+    console.log(`   Generating ${count} tests with seed ${seed}`);
+    console.log('');
+    console.log('Generating fuzz tests...');
+  }
 
-  // Generate fuzz tests
-  console.log('⚡ Generating fuzz tests...');
   const fuzzTests = generateFuzzTests(gremlinSpec, {
     numTests: count,
     strategies,
@@ -72,7 +89,7 @@ export async function fuzz(options: FuzzOptions): Promise<void> {
     includeComments: true,
   });
 
-  console.log(`   Generated ${fuzzTests.length} fuzz tests`);
+  if (!json) console.log(`   Generated ${fuzzTests.length} fuzz tests`);
 
   // Group by strategy for summary
   const strategyGroups = new Map<string, number>();
@@ -81,30 +98,26 @@ export async function fuzz(options: FuzzOptions): Promise<void> {
     strategyGroups.set(test.strategy, current + 1);
   }
 
-  console.log('');
-  console.log('📊 Test breakdown by strategy:');
-  for (const [strategyName, testCount] of strategyGroups.entries()) {
-    console.log(`   • ${formatStrategyName(strategyName)}: ${testCount} tests`);
+  if (!json) {
+    console.log('');
+    console.log('Test breakdown by strategy:');
+    for (const [strategyName, testCount] of strategyGroups.entries()) {
+      console.log(`   ${formatStrategyName(strategyName)}: ${testCount} tests`);
+    }
+    console.log('');
+    console.log('Converting to Playwright tests...');
   }
-
-  // Generate Playwright file
-  console.log('');
-  console.log('🎭 Converting to Playwright tests...');
 
   const playwrightCode = fuzzTestsToPlaywrightFile(gremlinSpec, fuzzTests, {
     baseUrl: 'http://localhost:3000',
     includeComments: true,
   });
 
-  // Save to output
-  ensureDir(output);
-  const outputPath = join(output, 'generated.spec.ts');
+  ensureDir(outputDir);
+  const outputPath = join(outputDir, 'generated.spec.ts');
   writeFileSync(outputPath, playwrightCode);
 
-  console.log(`   Saved to: ${outputPath}`);
-  console.log('');
-
-  // Print bug categories
+  // Collect bug categories
   const allBugCategories = new Set<string>();
   for (const test of fuzzTests) {
     if (test.bugCategories) {
@@ -114,19 +127,34 @@ export async function fuzz(options: FuzzOptions): Promise<void> {
     }
   }
 
+  const result: FuzzResult = {
+    testCount: fuzzTests.length,
+    strategies: Array.from(strategyGroups.keys()),
+    outputPath,
+    seed,
+    bugCategories: Array.from(allBugCategories).sort(),
+  };
+
+  if (output('fuzz', result, options)) return result;
+
+  if (!json) console.log(`   Saved to: ${outputPath}`);
+
   if (allBugCategories.size > 0) {
-    console.log('🐛 Bug categories these tests may catch:');
-    for (const category of Array.from(allBugCategories).sort()) {
-      console.log(`   • ${category}`);
-    }
     console.log('');
+    console.log('Bug categories these tests may catch:');
+    for (const category of Array.from(allBugCategories).sort()) {
+      console.log(`   ${category}`);
+    }
   }
 
-  console.log('✅ Fuzz test generation complete!');
+  console.log('');
+  console.log('Fuzz test generation complete!');
   console.log('');
   console.log('Next steps:');
-  console.log(`  • Run tests: npx playwright test ${output}`);
-  console.log(`  • Review generated tests at: ${outputPath}`);
+  console.log(`  Run tests: npx playwright test ${outputDir}`);
+  console.log(`  Review generated tests at: ${outputPath}`);
+
+  return result;
 }
 
 // ============================================================================
@@ -147,7 +175,6 @@ function parseStrategies(strategy: string): FuzzStrategy[] {
     return ALL_STRATEGIES;
   }
 
-  // Map common names to internal strategy names
   const strategyMap: Record<string, FuzzStrategy> = {
     'random-walk': 'random_walk',
     random: 'random_walk',
@@ -162,10 +189,9 @@ function parseStrategies(strategy: string): FuzzStrategy[] {
     rapid: 'rapid_fire',
     'invalid-state-access': 'invalid_state_access',
     invalid: 'invalid_state_access',
-    chaos: 'random_walk', // Default to random_walk for "chaos"
+    chaos: 'random_walk',
   };
 
-  // Split comma-separated strategies
   const requestedStrategies = strategy
     .toLowerCase()
     .split(',')
@@ -179,7 +205,6 @@ function parseStrategies(strategy: string): FuzzStrategy[] {
     }
   }
 
-  // If no valid strategies, default to all
   if (result.length === 0) {
     console.warn(`   Warning: Unknown strategy "${strategy}", using all strategies`);
     return ALL_STRATEGIES;

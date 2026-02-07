@@ -7,14 +7,20 @@
  * The command detects the framework and generates appropriate instructions.
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import {
+  detectFramework,
+  formatFramework,
+  getFrameworkInfo,
+  getInitCode,
+  type Framework,
+} from '../detect.ts';
+import { output, outputError, type OutputOptions } from '../output.ts';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface InstrumentOptions {
+export interface InstrumentOptions extends OutputOptions {
   /** Force a specific framework detection */
   framework?: string;
 
@@ -22,16 +28,41 @@ export interface InstrumentOptions {
   format?: 'prompt' | 'llms';
 }
 
-type Framework = 'nextjs' | 'vite' | 'cra' | 'remix' | 'expo' | 'react-native' | 'unknown';
+export interface InstrumentResult {
+  framework: Framework;
+  frameworkDisplay: string;
+  content: string;
+  entryPoint: string;
+  installCommand: string;
+  sdkPackage: string;
+  format: 'prompt' | 'llms';
+}
 
 // ============================================================================
 // Main Command
 // ============================================================================
 
-export async function instrument(options: InstrumentOptions): Promise<void> {
+export async function instrument(options: InstrumentOptions): Promise<InstrumentResult> {
   const framework = options.framework
     ? (options.framework as Framework)
     : detectFramework();
+
+  const info = getFrameworkInfo(framework);
+  const format = options.format ?? 'prompt';
+  const content =
+    format === 'llms' ? generateLlmsTxt(framework) : generatePrompt(framework);
+
+  const result: InstrumentResult = {
+    framework,
+    frameworkDisplay: info.displayName,
+    content,
+    entryPoint: info.entryPointHint,
+    installCommand: info.installCommand,
+    sdkPackage: info.sdkPackage,
+    format,
+  };
+
+  if (output('instrument', result, options)) return result;
 
   console.log('');
   console.log('Gremlin Instrument');
@@ -40,17 +71,17 @@ export async function instrument(options: InstrumentOptions): Promise<void> {
   console.log(`Detected framework: ${formatFramework(framework)}`);
   console.log('');
 
-  if (options.format === 'llms') {
+  if (format === 'llms') {
     console.log('Copy the following to .gremlin/llms.txt:');
     console.log('');
     console.log('─'.repeat(60));
-    console.log(generateLlmsTxt(framework));
+    console.log(content);
     console.log('─'.repeat(60));
   } else {
     console.log('Copy this prompt into your AI coding assistant:');
     console.log('');
     console.log('─'.repeat(60));
-    console.log(generatePrompt(framework));
+    console.log(content);
     console.log('─'.repeat(60));
   }
 
@@ -61,57 +92,8 @@ export async function instrument(options: InstrumentOptions): Promise<void> {
   console.log('  gremlin sessions');
   console.log('  gremlin replay latest');
   console.log('');
-}
 
-// ============================================================================
-// Framework Detection
-// ============================================================================
-
-function detectFramework(): Framework {
-  const packageJsonPath = join(process.cwd(), 'package.json');
-
-  if (!existsSync(packageJsonPath)) {
-    return 'unknown';
-  }
-
-  try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    const deps = {
-      ...packageJson.dependencies,
-      ...packageJson.devDependencies,
-    };
-
-    // Check for specific frameworks
-    if (deps['next']) return 'nextjs';
-    if (deps['@remix-run/react']) return 'remix';
-    if (deps['expo']) return 'expo';
-    if (deps['react-native'] && !deps['expo']) return 'react-native';
-    if (deps['vite'] && deps['react']) return 'vite';
-    if (deps['react-scripts']) return 'cra';
-
-    return 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
-
-function formatFramework(framework: Framework): string {
-  switch (framework) {
-    case 'nextjs':
-      return 'Next.js';
-    case 'vite':
-      return 'Vite + React';
-    case 'cra':
-      return 'Create React App';
-    case 'remix':
-      return 'Remix';
-    case 'expo':
-      return 'Expo';
-    case 'react-native':
-      return 'React Native (bare)';
-    default:
-      return 'Unknown (using generic instructions)';
-  }
+  return result;
 }
 
 // ============================================================================
@@ -119,23 +101,20 @@ function formatFramework(framework: Framework): string {
 // ============================================================================
 
 function generatePrompt(framework: Framework): string {
-  const baseInstructions = `
+  const info = getFrameworkInfo(framework);
+  const initCode = getInitCode(framework);
+
+  return `
 Add Gremlin session recording to this codebase. Gremlin records user sessions
 for replay and AI-powered test generation.
 
 STEPS:
-`;
 
-  const installCmd = getInstallCommand(framework);
-  const entryPoint = getEntryPointInfo(framework);
-  const initCode = getInitCode(framework);
-
-  return `${baseInstructions}
 1. Install the SDK:
-   ${installCmd}
+   ${info.installCommand}
 
 2. Find the app entry point:
-   ${entryPoint}
+   ${info.entryPointHint}
 
 3. Add this initialization code near the top of the entry file:
 ${initCode}
@@ -147,8 +126,14 @@ ${initCode}
    - Modal triggers: data-testid="btn-open-{modal-name}"
    - Important action buttons: data-testid="btn-{action}"
 
-5. The SDK auto-connects to the local dev server (gremlin dev) on localhost:3334.
-   No additional configuration is needed for development.
+5. The SDK auto-connects to localhost:3334 by default (gremlin dev).
+   To point at a remote server, add serverUrl to the config:
+   \`\`\`
+   const recorder = new GremlinRecorder({
+     appName: 'my-app',
+     serverUrl: 'https://your-server.example.com',
+   });
+   \`\`\`
 
 IMPORTANT:
 - Initialize the recorder ONCE at the app root, not in individual components
@@ -157,91 +142,13 @@ IMPORTANT:
 `;
 }
 
-function getInstallCommand(framework: Framework): string {
-  const webPackage = 'npm install @gremlin/recorder-web';
-  const rnPackage = 'npm install @gremlin/recorder-react-native';
-
-  switch (framework) {
-    case 'expo':
-    case 'react-native':
-      return rnPackage;
-    default:
-      return webPackage;
-  }
-}
-
-function getEntryPointInfo(framework: Framework): string {
-  switch (framework) {
-    case 'nextjs':
-      return 'Look for pages/_app.tsx, app/layout.tsx, or src/pages/_app.tsx';
-    case 'vite':
-      return 'Look for src/main.tsx or src/main.jsx';
-    case 'cra':
-      return 'Look for src/index.tsx or src/index.jsx';
-    case 'remix':
-      return 'Look for app/root.tsx';
-    case 'expo':
-      return 'Look for App.tsx, app/_layout.tsx (if using expo-router), or src/App.tsx';
-    case 'react-native':
-      return 'Look for App.tsx or index.js';
-    default:
-      return 'Find the main app entry point where React renders';
-  }
-}
-
-function getInitCode(framework: Framework): string {
-  if (framework === 'expo' || framework === 'react-native') {
-    return `
-   import { GremlinRecorder } from '@gremlin/recorder-react-native';
-
-   // Initialize recorder (do this once, outside component)
-   const recorder = new GremlinRecorder({
-     appName: 'YOUR_APP_NAME',
-   });
-
-   // Start recording (call this when app mounts)
-   recorder.start();
-
-   // Stop recording when needed (e.g., on logout)
-   // recorder.stop();
-`;
-  }
-
-  // Web frameworks
-  if (framework === 'nextjs') {
-    return `
-   // In _app.tsx or layout.tsx:
-   import { GremlinRecorder } from '@gremlin/recorder-web';
-
-   // Initialize outside component (runs once)
-   if (typeof window !== 'undefined') {
-     const recorder = new GremlinRecorder({
-       appName: 'YOUR_APP_NAME',
-     });
-     recorder.start();
-   }
-`;
-  }
-
-  return `
-   import { GremlinRecorder } from '@gremlin/recorder-web';
-
-   // Initialize recorder (do this once, at app startup)
-   const recorder = new GremlinRecorder({
-     appName: 'YOUR_APP_NAME',
-   });
-   recorder.start();
-
-   // Optional: Stop recording when user logs out
-   // recorder.stop();
-`;
-}
-
 // ============================================================================
 // llms.txt Generation
 // ============================================================================
 
 function generateLlmsTxt(framework: Framework): string {
+  const info = getFrameworkInfo(framework);
+
   return `# Gremlin Session Recording - AI Context
 
 This project uses Gremlin for session recording and AI-powered test generation.
@@ -253,10 +160,11 @@ This project uses Gremlin for session recording and AI-powered test generation.
 - Generates fuzz tests for edge case discovery
 
 ## Integration Pattern
-- Framework: ${formatFramework(framework)}
-- Entry point: ${getEntryPointInfo(framework)}
+- Framework: ${info.displayName}
+- Entry point: ${info.entryPointHint}
 - Initialize recorder ONCE at app root, NOT in individual components
 - The SDK auto-connects to localhost:3334 when \`gremlin dev\` is running
+- To send to a remote server: add \`serverUrl: 'https://your-server.example.com'\` to recorder config
 
 ## data-testid Conventions
 Use consistent naming for reliable test generation:
@@ -288,22 +196,32 @@ Priority order for adding data-testid:
 5. **Modals**: trigger buttons, confirm/cancel buttons
 6. **Lists**: container and clickable items
 
-## Developer Workflow
+## CLI Commands (Agent-Friendly)
 \`\`\`bash
+# Check project status
+gremlin status --json
+
 # Start dev server (receives sessions from SDK)
 gremlin dev
 
-# User interacts with app...
-
-# Watch most recent session
-gremlin replay latest
+# List recorded sessions
+gremlin sessions --json
 
 # Generate tests from sessions
-gremlin generate
+gremlin generate --json
 
 # Generate chaos/fuzz tests
-gremlin fuzz
+gremlin fuzz --json
+
+# Run generated tests
+gremlin run --json
+
+# View analytics
+gremlin analytics summary --json
 \`\`\`
+
+## Verification
+After any mutation, run \`gremlin status --json\` to confirm state.
 
 ## Common Gotchas
 - Don't initialize recorder multiple times (use singleton pattern)

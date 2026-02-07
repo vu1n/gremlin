@@ -9,8 +9,9 @@ import {
   type PostHogConfig,
   type ListOptions,
 } from '@gremlin/analysis';
+import { output, outputError, type OutputOptions } from '../output.ts';
 
-export interface ImportOptions {
+export interface ImportOptions extends OutputOptions {
   output: string;
   verbose?: boolean;
 }
@@ -30,19 +31,29 @@ export interface FileImportOptions extends ImportOptions {
   format?: 'rrweb' | 'posthog';
 }
 
+export interface ImportResult {
+  source: string;
+  imported: number;
+  failed: number;
+  sessions: string[];
+}
+
 /**
  * Import sessions from PostHog
  */
 export async function importFromPostHog(
   options: PostHogImportOptions
-): Promise<void> {
-  const { apiKey, projectId, host, output, verbose, limit, recordingId } =
+): Promise<ImportResult> {
+  const { apiKey, projectId, host, output: outputDir, verbose, limit, recordingId } =
     options;
 
   // Validate required options
   if (!apiKey) {
+    if (outputError('import', ['PostHog API key required. Set POSTHOG_API_KEY or use --api-key'], options)) {
+      process.exit(1);
+    }
     console.error(
-      '❌ PostHog API key required. Set POSTHOG_API_KEY or use --api-key'
+      'PostHog API key required. Set POSTHOG_API_KEY or use --api-key'
     );
     console.error(
       '   Get your API key from: https://app.posthog.com/settings/user-api-keys'
@@ -51,8 +62,11 @@ export async function importFromPostHog(
   }
 
   if (!projectId) {
+    if (outputError('import', ['PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id'], options)) {
+      process.exit(1);
+    }
     console.error(
-      '❌ PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id'
+      'PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id'
     );
     console.error('   Find your project ID in the PostHog URL or settings');
     process.exit(1);
@@ -64,32 +78,41 @@ export async function importFromPostHog(
     baseUrl: host || 'https://app.posthog.com',
   };
 
-  console.log('📥 Importing sessions from PostHog...');
-  if (verbose) {
-    console.log(`   Host: ${config.baseUrl}`);
-    console.log(`   Project: ${projectId}`);
+  if (!options.json) {
+    console.log('Importing sessions from PostHog...');
+    if (verbose) {
+      console.log(`   Host: ${config.baseUrl}`);
+      console.log(`   Project: ${projectId}`);
+    }
   }
 
   const importer = createPostHogImporter(config);
 
   try {
-    // Ensure output directory exists
-    await mkdir(output, { recursive: true });
+    await mkdir(outputDir, { recursive: true });
 
     if (recordingId) {
-      // Import a specific recording
-      console.log(`   Fetching recording ${recordingId}...`);
+      if (!options.json) console.log(`   Fetching recording ${recordingId}...`);
 
       const recording = await importer.fetchRecording(recordingId);
       const session = importer.convertToGremlinSession(recording);
 
-      const outputPath = join(output, `${recordingId}.json`);
+      const outputPath = join(outputDir, `${recordingId}.json`);
       await writeFile(outputPath, JSON.stringify(session, null, 2));
 
-      console.log(`✅ Imported 1 session`);
-      console.log(`   → ${outputPath}`);
+      const result: ImportResult = {
+        source: 'posthog',
+        imported: 1,
+        failed: 0,
+        sessions: [recordingId],
+      };
+
+      if (output('import', result, options)) return result;
+
+      console.log(`Imported 1 session`);
+      console.log(`   ${outputPath}`);
+      return result;
     } else {
-      // List and import multiple recordings
       const listOptions: ListOptions = {
         limit: limit || 10,
       };
@@ -101,26 +124,31 @@ export async function importFromPostHog(
         listOptions.dateTo = new Date(options.dateTo);
       }
 
-      console.log(`   Listing recordings (limit: ${listOptions.limit})...`);
+      if (!options.json) console.log(`   Listing recordings (limit: ${listOptions.limit})...`);
 
       const recordingList = await importer.listRecordings(listOptions);
 
       if (recordingList.results.length === 0) {
-        console.log('⚠️  No recordings found matching filters');
-        return;
+        const result: ImportResult = { source: 'posthog', imported: 0, failed: 0, sessions: [] };
+        if (output('import', result, options)) return result;
+        console.log('No recordings found matching filters');
+        return result;
       }
 
-      console.log(`   Found ${recordingList.results.length} recordings`);
-      if (recordingList.total_count) {
-        console.log(`   (${recordingList.total_count} total available)`);
+      if (!options.json) {
+        console.log(`   Found ${recordingList.results.length} recordings`);
+        if (recordingList.total_count) {
+          console.log(`   (${recordingList.total_count} total available)`);
+        }
       }
 
       let imported = 0;
       const errors: string[] = [];
+      const sessionIds: string[] = [];
 
       for (const metadata of recordingList.results) {
         try {
-          if (verbose) {
+          if (verbose && !options.json) {
             console.log(
               `   Fetching ${metadata.id} (${Math.round(metadata.recording_duration)}s)...`
             );
@@ -129,24 +157,34 @@ export async function importFromPostHog(
           const recording = await importer.fetchRecording(metadata.id);
           const session = importer.convertToGremlinSession(recording);
 
-          const outputPath = join(output, `${metadata.id}.json`);
+          const outputPath = join(outputDir, `${metadata.id}.json`);
           await writeFile(outputPath, JSON.stringify(session, null, 2));
 
           imported++;
+          sessionIds.push(metadata.id);
         } catch (err) {
           const message =
             err instanceof Error ? err.message : 'Unknown error';
           errors.push(`${metadata.id}: ${message}`);
-          if (verbose) {
-            console.error(`   ❌ Failed to import ${metadata.id}: ${message}`);
+          if (verbose && !options.json) {
+            console.error(`   Failed to import ${metadata.id}: ${message}`);
           }
         }
       }
 
-      console.log(`\n✅ Imported ${imported} sessions to ${output}`);
+      const result: ImportResult = {
+        source: 'posthog',
+        imported,
+        failed: errors.length,
+        sessions: sessionIds,
+      };
+
+      if (output('import', result, options)) return result;
+
+      console.log(`\nImported ${imported} sessions to ${outputDir}`);
 
       if (errors.length > 0) {
-        console.log(`⚠️  ${errors.length} recordings failed to import`);
+        console.log(`${errors.length} recordings failed to import`);
         if (verbose) {
           for (const error of errors) {
             console.log(`   - ${error}`);
@@ -155,14 +193,18 @@ export async function importFromPostHog(
       }
 
       console.log('\nNext steps:');
-      console.log(`  gremlin generate -i ${output}`);
+      console.log(`  gremlin generate -i ${outputDir}`);
+      return result;
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`\n❌ Import failed: ${message}`);
+    if (outputError('import', [`Import failed: ${message}`], options)) {
+      process.exit(1);
+    }
+    console.error(`\nImport failed: ${message}`);
 
     if (message.includes('401') || message.includes('403')) {
-      console.error('\n💡 Check your API key permissions:');
+      console.error('\nCheck your API key permissions:');
       console.error('   - Ensure the key has "Session Recording" read access');
       console.error('   - Personal API keys work better than project keys');
     }
@@ -174,48 +216,63 @@ export async function importFromPostHog(
 /**
  * Import sessions from a local file
  */
-export async function importFromFile(options: FileImportOptions): Promise<void> {
-  const { file, format, output, verbose } = options;
+export async function importFromFile(options: FileImportOptions): Promise<ImportResult> {
+  const { file, format, output: outputDir, verbose } = options;
 
-  console.log(`📥 Importing sessions from ${file}...`);
+  if (!options.json) console.log(`Importing sessions from ${file}...`);
 
   try {
     const { importRrwebRecording } = await import('@gremlin/analysis');
 
-    // Read file
     const content = await Bun.file(file).text();
     const events = JSON.parse(content);
 
-    // Detect format if not specified
     const detectedFormat =
       format || (Array.isArray(events) ? 'rrweb' : 'posthog');
 
-    if (verbose) {
+    if (verbose && !options.json) {
       console.log(`   Format: ${detectedFormat}`);
       console.log(`   Events: ${Array.isArray(events) ? events.length : 'N/A'}`);
     }
 
-    // Ensure output directory exists
-    await mkdir(output, { recursive: true });
+    await mkdir(outputDir, { recursive: true });
 
     if (detectedFormat === 'rrweb') {
       const session = importRrwebRecording(events);
-      const outputPath = join(output, `imported-${Date.now()}.json`);
+      const sessionId = `imported-${Date.now()}`;
+      const outputPath = join(outputDir, `${sessionId}.json`);
       await writeFile(outputPath, JSON.stringify(session, null, 2));
 
-      console.log(`✅ Imported 1 session`);
-      console.log(`   → ${outputPath}`);
+      const result: ImportResult = {
+        source: 'file',
+        imported: 1,
+        failed: 0,
+        sessions: [sessionId],
+      };
+
+      if (output('import', result, options)) return result;
+
+      console.log(`Imported 1 session`);
+      console.log(`   ${outputPath}`);
+
+      console.log('\nNext steps:');
+      console.log(`  gremlin generate -i ${outputDir}`);
+      return result;
     } else {
-      console.error('❌ PostHog file format not yet supported');
+      const result: ImportResult = { source: 'file', imported: 0, failed: 1, sessions: [] };
+      if (outputError('import', ['PostHog file format not yet supported. Use --posthog flag to import directly from PostHog API'], options)) {
+        process.exit(1);
+      }
+      console.error('PostHog file format not yet supported');
       console.error('   Use --posthog flag to import directly from PostHog API');
       process.exit(1);
     }
-
-    console.log('\nNext steps:');
-    console.log(`  gremlin generate -i ${output}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`\n❌ Import failed: ${message}`);
+    if (outputError('import', [`Import failed: ${message}`], options)) {
+      process.exit(1);
+    }
+    console.error(`\nImport failed: ${message}`);
     process.exit(1);
   }
 }

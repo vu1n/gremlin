@@ -8,13 +8,19 @@ import { replay } from './commands/replay.ts';
 import { importFromPostHog, importFromFile } from './commands/import.ts';
 import { run } from './commands/run.ts';
 import { listSessions } from './commands/sessions.ts';
+import { init } from './commands/init.ts';
+import { status } from './commands/status.ts';
+import { analyticsSummary, analyticsErrors } from './commands/analytics.ts';
+import { analyze } from './commands/analyze.ts';
+import { deployLocal, deployDocker, deployStatus, deployStop } from './commands/deploy.ts';
 
 const program = new Command();
 
 program
   .name('gremlin')
   .description('AI-powered test generation from real user sessions')
-  .version('0.0.1');
+  .version('0.0.1')
+  .option('--json', 'Machine-readable JSON output');
 
 program.addHelpText(
   'after',
@@ -26,20 +32,54 @@ Dev workflow:
   gremlin generate
 
 Agent workflow:
-  gremlin instrument --llms
+  gremlin init --json
+  gremlin status --json
   gremlin dev
-  gremlin sessions
-  gremlin generate
+  gremlin sessions --json
+  gremlin generate --json
+  gremlin analytics summary --json
 `
 );
+
+// ============================================================================
+// Init
+// ============================================================================
 
 program
   .command('init')
   .description('Initialize Gremlin in current project')
-  .action(() => {
-    console.log('Initializing Gremlin...');
-    // TODO: Create .gremlin/ directory, config file
+  .option('--app-name <name>', 'App name for recorder config')
+  .option('--framework <name>', 'Force framework (nextjs, vite, cra, remix, expo, react-native)')
+  .option('--skip-install', 'Skip SDK package installation')
+  .option('--instrument', 'Auto-instrument entry point')
+  .option('--server-url <url>', 'Configure remote server URL')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await init({
+      appName: options.appName,
+      framework: options.framework,
+      skipInstall: options.skipInstall,
+      instrument: options.instrument,
+      serverUrl: options.serverUrl,
+      json,
+    });
   });
+
+// ============================================================================
+// Status
+// ============================================================================
+
+program
+  .command('status')
+  .description('Show project status and configuration')
+  .action(async () => {
+    const json = program.opts().json;
+    await status({ json });
+  });
+
+// ============================================================================
+// Dev
+// ============================================================================
 
 program
   .command('dev')
@@ -48,12 +88,18 @@ program
   .option('-o, --output <path>', 'Output directory for sessions', '.gremlin/sessions')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => {
+    const json = program.opts().json;
     await dev({
       port: parseInt(options.port, 10),
       output: options.output,
       verbose: options.verbose ?? false,
+      json,
     });
   });
+
+// ============================================================================
+// Replay
+// ============================================================================
 
 program
   .command('replay')
@@ -70,6 +116,10 @@ program
       autoPlay: options.autoplay !== false,
     });
   });
+
+// ============================================================================
+// Import
+// ============================================================================
 
 program
   .command('import')
@@ -93,6 +143,7 @@ program
   .option('-o, --output <path>', 'Output directory', '.gremlin/sessions')
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => {
+    const json = program.opts().json;
     if (options.posthog) {
       await importFromPostHog({
         apiKey: options.apiKey || process.env.POSTHOG_API_KEY || '',
@@ -104,6 +155,7 @@ program
         dateFrom: options.dateFrom,
         dateTo: options.dateTo,
         recordingId: options.recordingId,
+        json,
       });
     } else if (options.file) {
       await importFromFile({
@@ -111,6 +163,7 @@ program
         format: options.format,
         output: options.output,
         verbose: options.verbose,
+        json,
       });
     } else {
       console.log('Usage: gremlin import --posthog [options]');
@@ -125,17 +178,27 @@ program
     }
   });
 
+// ============================================================================
+// Sessions
+// ============================================================================
+
 program
   .command('sessions')
   .description('List recorded sessions')
   .option('-i, --input <path>', 'Input sessions directory', '.gremlin/sessions')
   .option('-l, --limit <number>', 'Max sessions to list', '20')
   .action(async (options) => {
+    const json = program.opts().json;
     await listSessions({
       input: options.input,
       limit: parseInt(options.limit, 10),
+      json,
     });
   });
+
+// ============================================================================
+// Generate
+// ============================================================================
 
 program
   .command('generate')
@@ -149,6 +212,7 @@ program
   .option('--app-id <id>', 'App ID for mobile tests', 'com.example.app')
   .option('--provider <name>', 'AI provider: anthropic, openai, gemini')
   .action(async (options) => {
+    const json = program.opts().json;
     await generate({
       input: options.input,
       output: options.output,
@@ -158,8 +222,13 @@ program
       baseUrl: options.baseUrl,
       appId: options.appId,
       provider: options.provider,
+      json,
     });
   });
+
+// ============================================================================
+// Fuzz
+// ============================================================================
 
 program
   .command('fuzz')
@@ -170,14 +239,20 @@ program
   .option('--count <number>', 'Number of tests to generate', '10')
   .option('--seed <number>', 'Random seed for reproducible tests')
   .action(async (options) => {
+    const json = program.opts().json;
     await fuzz({
       spec: options.spec,
       output: options.output,
       strategy: options.strategy,
       count: parseInt(options.count, 10),
       seed: options.seed ? parseInt(options.seed, 10) : undefined,
+      json,
     });
   });
+
+// ============================================================================
+// Instrument
+// ============================================================================
 
 program
   .command('instrument')
@@ -185,11 +260,17 @@ program
   .option('--framework <name>', 'Force framework (nextjs, vite, cra, remix, expo, react-native)')
   .option('--llms', 'Output llms.txt format instead of prompt')
   .action(async (options) => {
+    const json = program.opts().json;
     await instrument({
       framework: options.framework,
       format: options.llms ? 'llms' : 'prompt',
+      json,
     });
   });
+
+// ============================================================================
+// Run
+// ============================================================================
 
 program
   .command('run')
@@ -203,6 +284,7 @@ program
   .option('--update-snapshots', 'Update Playwright snapshots')
   .option('--device <name>', 'Maestro device to run on')
   .action(async (test, options) => {
+    const json = program.opts().json;
     await run({
       test,
       all: options.all,
@@ -212,18 +294,124 @@ program
       watch: options.watch,
       updateSnapshots: options.updateSnapshots,
       device: options.device,
+      json,
     });
   });
 
-// Hidden command - not yet implemented (TLA+ verification)
-// Uncomment when prototype exists
-// program
-//   .command('verify')
-//   .description('Verify a property against the state model')
-//   .argument('<property>', 'Property to verify (natural language)')
-//   .action((property) => {
-//     console.log('✅ Verifying property:', property);
-//     // TODO: TLA+ verification
-//   });
+// ============================================================================
+// Analytics
+// ============================================================================
+
+const analyticsCmd = program
+  .command('analytics')
+  .description('Query session analytics');
+
+analyticsCmd
+  .command('summary')
+  .description('Aggregate analytics summary')
+  .option('--app <name>', 'Filter by app name')
+  .option('--since <date>', 'Filter by date (ISO)')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await analyticsSummary({
+      app: options.app,
+      since: options.since,
+      json,
+    });
+  });
+
+analyticsCmd
+  .command('errors')
+  .description('Error breakdown across sessions')
+  .option('--app <name>', 'Filter by app name')
+  .option('--since <date>', 'Filter by date (ISO)')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await analyticsErrors({
+      app: options.app,
+      since: options.since,
+      json,
+    });
+  });
+
+// ============================================================================
+// Analyze
+// ============================================================================
+
+program
+  .command('analyze')
+  .description('AI-powered insights from recorded sessions')
+  .option('-i, --input <path>', 'Input sessions directory', '.gremlin/sessions')
+  .option('--provider <name>', 'AI provider: anthropic, openai, gemini')
+  .option('--focus <type>', 'Focus area: ux, errors, performance, all', 'all')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await analyze({
+      input: options.input,
+      provider: options.provider,
+      focus: options.focus,
+      json,
+    });
+  });
+
+// ============================================================================
+// Deploy
+// ============================================================================
+
+const deployCmd = program
+  .command('deploy')
+  .description('Deploy Gremlin server');
+
+deployCmd
+  .command('local')
+  .description('Start local dev server')
+  .option('-p, --port <number>', 'Port', '3334')
+  .option('--background', 'Run as background daemon')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await deployLocal({
+      port: parseInt(options.port, 10),
+      background: options.background,
+      json,
+    });
+  });
+
+deployCmd
+  .command('docker')
+  .description('Deploy with Docker')
+  .option('-p, --port <number>', 'Port', '8787')
+  .option('--api-key <key>', 'Set API key (or auto-generate)')
+  .option('--data-dir <path>', 'Host data directory')
+  .option('--no-detach', 'Run in foreground')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await deployDocker({
+      port: parseInt(options.port, 10),
+      apiKey: options.apiKey,
+      dataDir: options.dataDir,
+      detach: options.detach !== false,
+      json,
+    });
+  });
+
+deployCmd
+  .command('status')
+  .description('Check deployment status')
+  .action(async () => {
+    const json = program.opts().json;
+    await deployStatus({ json });
+  });
+
+deployCmd
+  .command('stop')
+  .description('Stop running deployments')
+  .option('--target <type>', 'Target: local, docker, all', 'all')
+  .action(async (options) => {
+    const json = program.opts().json;
+    await deployStop({
+      target: options.target,
+      json,
+    });
+  });
 
 program.parse();
