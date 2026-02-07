@@ -180,3 +180,6 @@ dist
 # Tool configs (local)
 .bacchus/
 .gremlin/
+
+# Canopy index
+.canopy/
