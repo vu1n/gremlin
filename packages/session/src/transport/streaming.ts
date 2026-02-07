@@ -32,6 +32,12 @@ export interface StreamingTransportConfig {
 
   /** Debug logging */
   debug?: boolean;
+
+  /** Retry attempts for append uploads (default: 2) */
+  retryAttempts?: number;
+
+  /** Base retry delay in ms (default: 500) */
+  retryDelayMs?: number;
 }
 
 // ============================================================================
@@ -53,6 +59,8 @@ export class StreamingTransport {
       maxBatchSize: config.maxBatchSize ?? 50,
       fallbackToStorage: config.fallbackToStorage ?? true,
       debug: config.debug ?? false,
+      retryAttempts: config.retryAttempts ?? 2,
+      retryDelayMs: config.retryDelayMs ?? 500,
     };
   }
 
@@ -216,15 +224,23 @@ export class StreamingTransport {
     rrwebEvents: unknown[];
   }): Promise<boolean> {
     try {
-      const response = await fetch(`${this.config.endpoint}/session/append`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(3000),
+      const ok = await this.withRetry(async () => {
+        const response = await fetch(`${this.config.endpoint}/session/append`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        this.serverAvailable = response.ok;
+        return response.ok;
       });
 
-      this.serverAvailable = response.ok;
-      return response.ok;
+      if (!ok && this.config.fallbackToStorage) {
+        this.appendToStorage(payload);
+      }
+
+      return ok;
     } catch {
       this.serverAvailable = false;
 
@@ -235,6 +251,31 @@ export class StreamingTransport {
 
       return false;
     }
+  }
+
+  private async withRetry(attempt: () => Promise<boolean>): Promise<boolean> {
+    const maxAttempts = Math.max(1, this.config.retryAttempts + 1);
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const ok = await attempt();
+        if (ok) {
+          return true;
+        }
+      } catch {
+        // handled below with retry
+      }
+
+      if (i < maxAttempts - 1) {
+        await this.wait(this.config.retryDelayMs * Math.pow(2, i));
+      }
+    }
+
+    return false;
+  }
+
+  private wait(delayMs: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   private saveToStorage(session: GremlinSession): void {

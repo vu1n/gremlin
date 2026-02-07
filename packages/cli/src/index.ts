@@ -7,6 +7,7 @@ import { instrument } from './commands/instrument.ts';
 import { replay } from './commands/replay.ts';
 import { importFromPostHog, importFromFile } from './commands/import.ts';
 import { run } from './commands/run.ts';
+import { listSessions } from './commands/sessions.ts';
 
 const program = new Command();
 
@@ -105,6 +106,18 @@ program
       console.log('  gremlin import --file ./recording.json');
       console.log('\nRun "gremlin import --help" for all options');
     }
+  });
+
+program
+  .command('sessions')
+  .description('List recorded sessions')
+  .option('-i, --input <path>', 'Input sessions directory', '.gremlin/sessions')
+  .option('-l, --limit <number>', 'Max sessions to list', '20')
+  .action(async (options) => {
+    await listSessions({
+      input: options.input,
+      limit: parseInt(options.limit, 10),
+    });
   });
 
 program

@@ -2,7 +2,7 @@
  * Filesystem storage layer for Gremlin sessions
  */
 
-import { readFileSync, writeFileSync, existsSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, rmSync, renameSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSession } from '@gremlin/session';
 import type {
@@ -28,11 +28,13 @@ export async function storeSession(
   const sessionId = session.header.sessionId || generateSessionId();
   const sessionsDir = join(config.dataDir, 'sessions');
   const sessionPath = join(sessionsDir, `${sessionId}.json`);
+  const tempSessionPath = join(sessionsDir, `${sessionId}.json.tmp`);
   const sessionJson = JSON.stringify(session, null, 2);
   const sessionSize = new TextEncoder().encode(sessionJson).length;
   const uploadedAt = Date.now();
 
-  writeFileSync(sessionPath, sessionJson);
+  writeFileSync(tempSessionPath, sessionJson);
+  renameSync(tempSessionPath, sessionPath);
 
   const summary = createSessionSummary(sessionId, session, sessionSize, uploadedAt);
   const indexEntry: SessionIndexEntry = {
@@ -174,5 +176,7 @@ function saveIndex(
   index: Record<string, SessionIndexEntry>
 ): void {
   const indexPath = join(config.dataDir, INDEX_FILE);
-  writeFileSync(indexPath, JSON.stringify(index, null, 2));
+  const tempIndexPath = join(config.dataDir, `${INDEX_FILE}.tmp`);
+  writeFileSync(tempIndexPath, JSON.stringify(index, null, 2));
+  renameSync(tempIndexPath, indexPath);
 }

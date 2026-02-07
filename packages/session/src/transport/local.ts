@@ -25,6 +25,12 @@ export interface LocalTransportConfig {
 
   /** Debug logging */
   debug?: boolean;
+
+  /** Retry attempts for server upload (default: 2) */
+  retryAttempts?: number;
+
+  /** Base retry delay in ms (default: 500) */
+  retryDelayMs?: number;
 }
 
 export interface TransportResult {
@@ -47,6 +53,8 @@ export class LocalTransport {
       fallbackToStorage: config.fallbackToStorage ?? true,
       storagePrefix: config.storagePrefix ?? 'gremlin_session_',
       debug: config.debug ?? false,
+      retryAttempts: config.retryAttempts ?? 2,
+      retryDelayMs: config.retryDelayMs ?? 500,
     };
   }
 
@@ -144,41 +152,76 @@ export class LocalTransport {
 
   private async tryServer(session: GremlinSession): Promise<TransportResult> {
     try {
-      const response = await fetch(`${this.config.endpoint}/session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(session),
-        signal: AbortSignal.timeout(5000),
-      });
+      return await this.withRetry(async () => {
+        const response = await fetch(`${this.config.endpoint}/session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(session),
+          signal: AbortSignal.timeout(5000),
+        });
 
-      if (response.ok) {
-        this.serverAvailable = true;
-        if (this.config.debug) {
-          console.log('[LocalTransport] Session uploaded to server', {
-            sessionId: session.header.sessionId,
-            events: session.events.length,
-          });
+        if (response.ok) {
+          this.serverAvailable = true;
+          if (this.config.debug) {
+            console.log('[LocalTransport] Session uploaded to server', {
+              sessionId: session.header.sessionId,
+              events: session.events.length,
+            });
+          }
+          return { success: true, method: 'server' };
         }
-        return { success: true, method: 'server' };
-      }
 
-      return {
-        success: false,
-        method: 'server',
-        error: `Server returned ${response.status}`,
-      };
-    } catch (e) {
+        return {
+          success: false,
+          method: 'server',
+          error: `Server returned ${response.status}`,
+        };
+      });
+    } catch (error) {
       this.serverAvailable = false;
-      const error = e instanceof Error ? e.message : 'Unknown error';
-
+      const message = error instanceof Error ? error.message : 'Unknown error';
       if (this.config.debug) {
-        console.log('[LocalTransport] Server unavailable', error);
+        console.log('[LocalTransport] Server unavailable', message);
+      }
+      return { success: false, method: 'server', error: message };
+    }
+  }
+
+  private async withRetry(
+    attempt: () => Promise<TransportResult>
+  ): Promise<TransportResult> {
+    const maxAttempts = Math.max(1, this.config.retryAttempts + 1);
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const result = await attempt();
+        if (result.success) {
+          return result;
+        }
+        if (i === maxAttempts - 1) {
+          return result;
+        }
+      } catch (error) {
+        if (i === maxAttempts - 1) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          this.serverAvailable = false;
+          if (this.config.debug) {
+            console.log('[LocalTransport] Server unavailable', message);
+          }
+          return { success: false, method: 'server', error: message };
+        }
       }
 
-      return { success: false, method: 'server', error };
+      await this.wait(this.config.retryDelayMs * Math.pow(2, i));
     }
+
+    return { success: false, method: 'server', error: 'Retry attempts exhausted' };
+  }
+
+  private wait(delayMs: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   private saveToStorage(session: GremlinSession): TransportResult {

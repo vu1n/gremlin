@@ -255,6 +255,16 @@ re-ingesting sessions if needed.
 
 The server runs on `http://localhost:8787` by default.
 
+## Dev Hardening
+
+Gremlin defaults are tuned for dev workflows:
+
+- Local ingest via `gremlin dev` with `/health` and `/metrics` endpoints.
+- Self-hosted server exposes `/health` and `/metrics` for quick checks.
+- Session writes are atomic to avoid partial files on crash.
+- SDK transports retry transient failures with backoff.
+- `gremlin sessions` lists recorded sessions quickly.
+
 ## Development
 
 ### Setup

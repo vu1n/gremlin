@@ -56,6 +56,11 @@ Set `API_KEY` in your environment or compose file. For local dev, you can set
 The API matches `@gremlin/server` (Cloudflare Worker). See
 [packages/server/README.md](file:///Users/vuln/code/gremlin/packages/server/README.md) for the endpoint list.
 
+Health checks:
+
+- `GET /health`
+- `GET /metrics`
+
 ## Data Layout
 
 ```
@@ -74,4 +79,3 @@ DATA_DIR/
 
 - Production deployments should set `DISABLE_AUTH=false` and provide `API_KEY`.
 - Set `ALLOWED_ORIGINS` to your app domain.
-

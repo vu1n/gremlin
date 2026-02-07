@@ -9,7 +9,14 @@
  *   gremlin dev --port 4000  # Custom port
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  renameSync,
+  readdirSync,
+  readFileSync,
+} from 'fs';
 import { join } from 'path';
 import { networkInterfaces } from 'os';
 import type { GremlinSession, SessionAnalytics } from '@gremlin/session';
@@ -60,6 +67,7 @@ export async function dev(options: DevOptions): Promise<void> {
     console.log(`    Network:  http://${localIP}:${port}  (for React Native)`);
   }
   console.log('');
+  logSessionSummary(output);
   console.log('  Waiting for sessions...');
   console.log('  ' + '─'.repeat(40));
   console.log('');
@@ -99,6 +107,19 @@ export async function dev(options: DevOptions): Promise<void> {
         );
       }
 
+      if (url.pathname === '/metrics') {
+        const metrics = getMetrics(output);
+        return new Response(
+          JSON.stringify({
+            status: 'ok',
+            ...metrics,
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
       // Receive session
       if (url.pathname === '/session' && req.method === 'POST') {
         try {
@@ -118,14 +139,18 @@ export async function dev(options: DevOptions): Promise<void> {
 
           sessionCount++;
 
-          // Save session
+          // Save session (atomic write)
           const sessionFile = join(output, `${session.header.sessionId}.json`);
-          writeFileSync(sessionFile, JSON.stringify(session, null, 2));
+          const tempFile = `${sessionFile}.tmp`;
+          writeFileSync(tempFile, JSON.stringify(session, null, 2));
+          renameSync(tempFile, sessionFile);
 
-          // Log analytics
+          // Log analytics (atomic write)
           const analytics = extractAnalytics(session);
           const analyticsFile = join(analyticsDir, `${session.header.sessionId}.json`);
-          writeFileSync(analyticsFile, JSON.stringify(analytics, null, 2));
+          const analyticsTemp = `${analyticsFile}.tmp`;
+          writeFileSync(analyticsTemp, JSON.stringify(analytics, null, 2));
+          renameSync(analyticsTemp, analyticsFile);
 
           // Log to console
           logSession(session, sessionCount, verbose);
@@ -193,8 +218,10 @@ export async function dev(options: DevOptions): Promise<void> {
             session.rrwebEvents = [...(session.rrwebEvents || []), ...rrwebEvents];
           }
 
-          // Save updated session
-          writeFileSync(sessionFile, JSON.stringify(session, null, 2));
+          // Save updated session (atomic write)
+          const tempFile = `${sessionFile}.tmp`;
+          writeFileSync(tempFile, JSON.stringify(session, null, 2));
+          renameSync(tempFile, sessionFile);
 
           if (verbose) {
             console.log(`  [append] ${sessionId}: +${events?.length || 0} events, +${rrwebEvents?.length || 0} rrweb`);
@@ -339,5 +366,49 @@ function logSession(session: GremlinSession, count: number, verbose: boolean): v
       console.log(`        - ${kind}: ${cnt}`);
     }
     console.log('');
+  }
+}
+
+function logSessionSummary(outputDir: string): void {
+  const metrics = getMetrics(outputDir);
+  if (metrics.sessionCount === 0) {
+    return;
+  }
+
+  console.log(`  Existing sessions: ${metrics.sessionCount}`);
+  if (metrics.lastSession) {
+    console.log(
+      `  Last session: ${metrics.lastSession.appName} (${metrics.lastSession.platform}), ${metrics.lastSession.eventCount} events`
+    );
+  }
+  console.log('');
+}
+
+function getMetrics(outputDir: string): {
+  sessionCount: number;
+  lastSession?: { appName: string; platform: string; eventCount: number };
+} {
+  try {
+    const files = readdirSync(outputDir)
+      .filter((file) => file.endsWith('.json'))
+      .sort();
+
+    if (files.length === 0) {
+      return { sessionCount: 0 };
+    }
+
+    const lastFile = files[files.length - 1];
+    const content = readFileSync(join(outputDir, lastFile), 'utf-8');
+    const session = JSON.parse(content) as GremlinSession;
+    return {
+      sessionCount: files.length,
+      lastSession: {
+        appName: session.header?.app?.name || 'unknown',
+        platform: session.header?.device?.platform || 'unknown',
+        eventCount: session.events?.length || 0,
+      },
+    };
+  } catch {
+    return { sessionCount: 0 };
   }
 }

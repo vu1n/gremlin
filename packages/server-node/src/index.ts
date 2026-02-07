@@ -110,6 +110,24 @@ app.get('/', (c) => {
   });
 });
 
+app.get('/health', async (c) => {
+  const { sessionCount } = await getMetrics();
+  return c.json({
+    status: 'ok',
+    server: 'gremlin-server-node',
+    version: '0.0.1',
+    sessions: sessionCount,
+  });
+});
+
+app.get('/metrics', async (c) => {
+  const metrics = await getMetrics();
+  return c.json({
+    status: 'ok',
+    ...metrics,
+  });
+});
+
 app.post('/v1/sessions', async (c) => {
   try {
     let sessionData: unknown;
@@ -368,3 +386,24 @@ Bun.serve({
   port,
   fetch: app.fetch,
 });
+
+async function getMetrics(): Promise<{
+  sessionCount: number;
+  lastSession?: { id: string; appName: string; platform: string; eventCount: number; uploadedAt: number };
+}> {
+  const result = await listSessions(config, 1);
+  const lastSession = result.sessions[0]
+    ? {
+        id: result.sessions[0].id,
+        appName: result.sessions[0].appName,
+        platform: result.sessions[0].platform,
+        eventCount: result.sessions[0].eventCount,
+        uploadedAt: result.sessions[0].uploadedAt,
+      }
+    : undefined;
+
+  return {
+    sessionCount: result.totalCount ?? result.sessions.length,
+    lastSession,
+  };
+}

@@ -24,7 +24,6 @@ bun add @gremlin/recorder-web
 ```typescript
 import { GremlinRecorder } from '@gremlin/recorder-web';
 
-// Create recorder
 const recorder = new GremlinRecorder({
   appName: 'MyApp',
   appVersion: '1.0.0',
@@ -45,6 +44,8 @@ console.log(JSON.stringify(session));
 ### Auto-start on Page Load
 
 ```typescript
+import { GremlinRecorder } from '@gremlin/recorder-web';
+
 const recorder = new GremlinRecorder({
   appName: 'MyApp',
   appVersion: '1.0.0',
@@ -59,6 +60,8 @@ const session = recorder.stop();
 ### Real-time Event Streaming
 
 ```typescript
+import { GremlinRecorder } from '@gremlin/recorder-web';
+
 const recorder = new GremlinRecorder({
   appName: 'MyApp',
   appVersion: '1.0.0',
@@ -77,6 +80,8 @@ recorder.start();
 ### Custom Configuration
 
 ```typescript
+import { GremlinRecorder, LocalTransport } from '@gremlin/recorder-web';
+
 const recorder = new GremlinRecorder({
   appName: 'MyApp',
   appVersion: '1.0.0',
@@ -88,6 +93,12 @@ const recorder = new GremlinRecorder({
 
   // Privacy
   maskInputs: true, // Mask passwords and emails
+
+  // Resilience
+  transport: new LocalTransport({
+    retryAttempts: 3,
+    retryDelayMs: 500,
+  }),
 
   // Custom rrweb options
   rrwebOptions: {
