@@ -58,6 +58,7 @@ export async function instrument(options: InstrumentOptions): Promise<void> {
   console.log('After instrumentation, run:');
   console.log('  gremlin dev     # Start local dev server');
   console.log('  # Use your app');
+  console.log('  gremlin sessions');
   console.log('  gremlin replay latest');
   console.log('');
 }

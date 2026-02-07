@@ -270,6 +270,22 @@ Gremlin defaults are tuned for dev workflows:
 Gremlin supports AI agent workflows via `gremlin instrument --llms`, which
 prints an `llms.txt` block with project-specific instrumentation guidance.
 
+CLI help excerpt:
+
+```text
+Dev workflow:
+  gremlin dev
+  gremlin sessions
+  gremlin replay latest
+  gremlin generate
+
+Agent workflow:
+  gremlin instrument --llms
+  gremlin dev
+  gremlin sessions
+  gremlin generate
+```
+
 ## Development
 
 ### Setup
