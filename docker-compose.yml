@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  gremlin-server:
+    build:
+      context: .
+      dockerfile: packages/server-node/Dockerfile
+    ports:
+      - "8787:8787"
+    env_file:
+      - ./packages/server-node/.env.example
+    volumes:
+      - ./data:/gremlin-data
+    environment:
+      DATA_DIR: /gremlin-data
