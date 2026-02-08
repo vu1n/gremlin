@@ -590,8 +590,8 @@ server.tool(
     const args: string[] = ['run', '--all'];
     if (testsDir) {
       // Prevent path traversal outside the project
-      if (testsDir.includes('..') || testsDir.startsWith('/')) {
-        return errorResult('Invalid tests directory: must be a relative path without ".."');
+      if (testsDir.includes('..') || testsDir.startsWith('/') || testsDir.includes('\\')) {
+        return errorResult('Invalid tests directory: must be a relative path without ".." or backslashes');
       }
       args.push('--tests-dir', testsDir);
     }

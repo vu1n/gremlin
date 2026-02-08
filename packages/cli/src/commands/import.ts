@@ -3,7 +3,7 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import {
   createPostHogImporter,
   type PostHogConfig,
@@ -97,7 +97,9 @@ export async function importFromPostHog(
       const recording = await importer.fetchRecording(recordingId);
       const session = importer.convertToGremlinSession(recording);
 
-      const outputPath = join(outputDir, `${recordingId}.json`);
+      // Sanitize ID to prevent path traversal
+      const safeId = basename(recordingId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const outputPath = join(outputDir, `${safeId}.json`);
       await writeFile(outputPath, JSON.stringify(session, null, 2));
 
       const result: ImportResult = {
@@ -157,7 +159,9 @@ export async function importFromPostHog(
           const recording = await importer.fetchRecording(metadata.id);
           const session = importer.convertToGremlinSession(recording);
 
-          const outputPath = join(outputDir, `${metadata.id}.json`);
+          // Sanitize ID to prevent path traversal
+          const safeMetaId = basename(metadata.id).replace(/[^a-zA-Z0-9_\-]/g, '_');
+          const outputPath = join(outputDir, `${safeMetaId}.json`);
           await writeFile(outputPath, JSON.stringify(session, null, 2));
 
           imported++;

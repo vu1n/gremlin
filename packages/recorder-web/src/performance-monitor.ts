@@ -194,8 +194,15 @@ export class WebPerformanceMonitor {
       this.frameCount++;
       const delta = now - this.lastFrameTime;
 
-      // Calculate FPS every second
+      // Calculate FPS every second (discard if delta > 2s — tab was likely hidden)
       if (delta >= 1000) {
+        if (delta > 2000) {
+          // Tab was hidden or suspended — discard this sample to avoid contamination
+          this.frameCount = 0;
+          this.lastFrameTime = now;
+          this.rafHandle = requestAnimationFrame(measureFrame);
+          return;
+        }
         this.currentFPS = (this.frameCount / delta) * 1000;
         this.fpsSamples.push(this.currentFPS);
         // Cap samples to prevent unbounded growth in long sessions

@@ -157,10 +157,14 @@ export class NavigationListener {
       return 'push';
     }
 
-    // Check if it's a pop (going back in history)
-    const previousIndex = this.routeHistory.lastIndexOf(current.name);
-    if (previousIndex >= 0 && previousIndex < this.routeHistory.length - 1) {
-      return 'pop';
+    // Check if it's a pop (going back): the current screen must be the one
+    // immediately before the previous screen in history (i.e. we're returning
+    // to the screen we came from, not just revisiting any earlier screen).
+    if (this.routeHistory.length >= 2) {
+      const secondToLast = this.routeHistory[this.routeHistory.length - 2];
+      if (secondToLast === current.name) {
+        return 'pop';
+      }
     }
 
     // Check for modal patterns (route name contains 'Modal' or 'Sheet')
@@ -178,10 +182,16 @@ export class NavigationListener {
   /**
    * Mask sensitive parameter values
    */
-  private maskSensitiveParams(params?: any): Record<string, unknown> | undefined {
+  private maskSensitiveParams(params?: any, depth = 0, seen = new WeakSet()): Record<string, unknown> | undefined {
     if (!params || typeof params !== 'object') {
       return params;
     }
+
+    // Guard against circular references and excessive depth
+    if (depth > 5 || seen.has(params)) {
+      return '[nested]' as any;
+    }
+    seen.add(params);
 
     const masked: Record<string, unknown> = {};
     const sensitiveKeys = ['token', 'password', 'secret', 'key', 'auth', 'api'];
@@ -194,7 +204,7 @@ export class NavigationListener {
         masked[key] = '***';
       } else if (typeof value === 'object' && value !== null) {
         // Recursively mask nested objects
-        masked[key] = this.maskSensitiveParams(value);
+        masked[key] = this.maskSensitiveParams(value, depth + 1, seen);
       } else {
         masked[key] = value;
       }

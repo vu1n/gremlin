@@ -149,6 +149,11 @@ export interface StorageAdapter {
  *   CF Workers passes `(c) => adapter(c.env)` since env is per-request.
  *   Self-hosted passes `() => staticAdapter` since config is fixed.
  */
+/** Validate that a session ID contains only safe characters */
+function isValidSessionId(id: string): boolean {
+  return /^[a-zA-Z0-9_\-]+$/.test(id) && id.length > 0 && id.length <= 256;
+}
+
 export function registerApiRoutes(
   app: Hono<any>,
   getStorage: (c: any) => StorageAdapter
@@ -179,6 +184,9 @@ export function registerApiRoutes(
   app.get('/v1/sessions/:id/performance', async (c) => {
     try {
       const id = c.req.param('id');
+      if (!isValidSessionId(id)) {
+        return c.json<ErrorResponse>({ error: { code: 'INVALID_REQUEST', message: 'Invalid session ID' } }, 400);
+      }
       const result = await getStorage(c).getSessionPerformance(id);
 
       if (!result) {
@@ -279,7 +287,7 @@ export function registerApiRoutes(
     try {
       const id = c.req.param('id');
 
-      if (!id) {
+      if (!id || !isValidSessionId(id)) {
         return c.json<ErrorResponse>(
           {
             error: {
@@ -403,7 +411,7 @@ export function registerApiRoutes(
     try {
       const id = c.req.param('id');
 
-      if (!id) {
+      if (!id || !isValidSessionId(id)) {
         return c.json<ErrorResponse>(
           {
             error: {

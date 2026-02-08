@@ -163,7 +163,7 @@ export async function dev(options: DevOptions): Promise<void> {
           const session = body as GremlinSession;
 
           // Validate session has required fields
-          if (!session.header?.sessionId) {
+          if (!session.header?.sessionId || !/^[a-zA-Z0-9_\-]+$/.test(session.header.sessionId)) {
             return new Response(
               JSON.stringify({ error: 'Invalid session: missing sessionId' }),
               {
@@ -234,9 +234,9 @@ export async function dev(options: DevOptions): Promise<void> {
           const body = await req.json();
           const { sessionId, events, rrwebEvents } = body;
 
-          if (!sessionId) {
+          if (!sessionId || !/^[a-zA-Z0-9_\-]+$/.test(sessionId)) {
             return new Response(
-              JSON.stringify({ error: 'Missing sessionId' }),
+              JSON.stringify({ error: 'Missing or invalid sessionId' }),
               {
                 status: 400,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },

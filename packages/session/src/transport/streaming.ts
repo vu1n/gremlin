@@ -51,6 +51,7 @@ export class StreamingTransport {
   private pendingRrwebEvents: unknown[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private serverAvailable = true;
+  private generation = 0;
 
   constructor(config: StreamingTransportConfig = {}) {
     this.config = {
@@ -69,6 +70,7 @@ export class StreamingTransport {
    * Call this when recording starts.
    */
   start(sessionId: string): void {
+    this.generation++;
     this.sessionId = sessionId;
     this.pendingEvents = [];
     this.pendingRrwebEvents = [];
@@ -175,11 +177,12 @@ export class StreamingTransport {
     this.pendingEvents = [];
     this.pendingRrwebEvents = [];
     this.flushing = true;
+    const flushGeneration = this.generation;
 
-    // Send async — restore events on failure
+    // Send async — restore events on failure (only if same session)
     this.sendBatch(payload)
       .then((success) => {
-        if (!success) {
+        if (!success && this.generation === flushGeneration) {
           // Prepend failed events back so they're retried on next flush
           this.pendingEvents = [...events, ...this.pendingEvents];
           this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
@@ -191,10 +194,12 @@ export class StreamingTransport {
         }
       })
       .finally(() => {
-        this.flushing = false;
-        if (this.pendingFlush) {
-          this.pendingFlush = false;
-          this.flush();
+        if (this.generation === flushGeneration) {
+          this.flushing = false;
+          if (this.pendingFlush) {
+            this.pendingFlush = false;
+            this.flush();
+          }
         }
       });
   }
@@ -205,7 +210,10 @@ export class StreamingTransport {
   flushBeacon(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
-    if (this.flushing) return; // Prevent race with in-flight flush()
+    // Don't bail when flushing — the in-flight flush already swapped its arrays,
+    // so pendingEvents contains only NEW events accumulated since. These must be
+    // sent via beacon because the page may be unloading and the in-flight fetch
+    // won't complete.
 
     // Snapshot and swap (same pattern as flush) to avoid races
     const events = this.pendingEvents;

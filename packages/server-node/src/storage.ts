@@ -61,7 +61,14 @@ export async function storeSession(
   await withIndexLock(async () => {
     const index = await loadIndex(config);
     index[sessionId] = indexEntry;
-    await saveIndex(config, index);
+    try {
+      await saveIndex(config, index);
+    } catch (err) {
+      // Revert in-memory state on disk write failure
+      delete index[sessionId];
+      console.error('Failed to save session index:', err);
+      throw err;
+    }
   });
 
   return sessionId;
@@ -143,8 +150,16 @@ export async function deleteSession(
   await withIndexLock(async () => {
     const index = await loadIndex(config);
     if (index[id]) {
+      const backup = index[id];
       delete index[id];
-      await saveIndex(config, index);
+      try {
+        await saveIndex(config, index);
+      } catch (err) {
+        // Revert in-memory state on disk write failure
+        index[id] = backup;
+        console.error('Failed to save session index after delete:', err);
+        throw err;
+      }
     }
   });
 

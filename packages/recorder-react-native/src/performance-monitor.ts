@@ -197,13 +197,17 @@ export class PerformanceMonitor {
   // Private Methods - JS Thread Lag Tracking
   // ========================================================================
 
+  private static readonly LAG_CHECK_INTERVAL = 100;
+
   private startJSLagTracking(): void {
-    // Use InteractionManager to detect when JS thread is busy
+    // Use InteractionManager to detect when JS thread is busy.
+    // Subtract the expected timer interval so idle lag reports ~0ms.
     const checkLag = () => {
       if (!this.isRunning) return;
 
       const now = Date.now();
-      const lag = now - this.lastInteractionTime;
+      const elapsed = now - this.lastInteractionTime;
+      const lag = Math.max(0, elapsed - PerformanceMonitor.LAG_CHECK_INTERVAL);
 
       // Update max lag
       if (lag > this.maxLagSinceLastSample) {
@@ -215,7 +219,7 @@ export class PerformanceMonitor {
       // Schedule next check after runAfterInteractions
       InteractionManager.runAfterInteractions(() => {
         if (!this.isRunning) return;
-        this.lagTimer = setTimeout(checkLag, 100);
+        this.lagTimer = setTimeout(checkLag, PerformanceMonitor.LAG_CHECK_INTERVAL);
       });
     };
 
