@@ -7,12 +7,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:generate": "bun tests/generate-and-verify.ts"
   },
   "dependencies": {
     "@gremlin/recorder-web": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "vite": "^5.4.11"
   }
 }

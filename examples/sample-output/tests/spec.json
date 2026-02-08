@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "gremlin-demo-shop",
   "schemaVersion": 1,
   "variables": [
     {
@@ -11,13 +11,6 @@
     },
     {
       "id": "var_1",
-      "name": "searchTerm",
-      "type": "string",
-      "initialValue": "",
-      "description": "The current search query."
-    },
-    {
-      "id": "var_2",
       "name": "email",
       "type": "string",
       "initialValue": "",
@@ -28,51 +21,84 @@
     {
       "id": "home",
       "name": "Home",
-      "description": "The main landing page, displaying products.",
+      "description": "The main landing page with hero section and feature grid.",
       "invariants": [],
-      "observedCount": 0
+      "observedCount": 5,
+      "source": "both",
+      "metadata": {
+        "url": "/",
+        "identifyingElement": {
+          "testId": "hero-browse-btn"
+        }
+      }
     },
     {
-      "id": "search_results",
-      "name": "Search Results",
-      "description": "Displays products matching a search query.",
+      "id": "products",
+      "name": "Products",
+      "description": "Product listing page with filter and sort controls.",
       "invariants": [],
-      "observedCount": 0
+      "observedCount": 4,
+      "source": "both",
+      "metadata": {
+        "url": "/products.html",
+        "identifyingElement": {
+          "testId": "products-grid"
+        }
+      }
     },
     {
       "id": "product_detail",
       "name": "Product Detail",
-      "description": "Detailed view of a single product.",
+      "description": "Product detail modal showing description, features, and add-to-cart button.",
       "invariants": [],
-      "observedCount": 0
+      "observedCount": 3,
+      "source": "both",
+      "metadata": {
+        "identifyingElement": {
+          "testId": "product-modal"
+        }
+      }
     },
     {
-      "id": "cart_empty",
-      "name": "Cart Empty",
-      "description": "The shopping cart when it contains no items.",
+      "id": "cart",
+      "name": "Cart",
+      "description": "Shopping cart page showing items, quantities, and order summary.",
       "invariants": [],
-      "observedCount": 0
-    },
-    {
-      "id": "cart_with_items",
-      "name": "Cart With Items",
-      "description": "The shopping cart when it contains one or more items.",
-      "invariants": [],
-      "observedCount": 0
+      "observedCount": 3,
+      "source": "both",
+      "metadata": {
+        "url": "/cart.html",
+        "identifyingElement": {
+          "testId": "cart-items-container"
+        }
+      }
     },
     {
       "id": "checkout",
       "name": "Checkout",
-      "description": "The checkout page where the user provides shipping and payment information.",
+      "description": "Checkout page with multi-step form: shipping, payment, review.",
       "invariants": [],
-      "observedCount": 0
+      "observedCount": 2,
+      "source": "both",
+      "metadata": {
+        "url": "/checkout.html",
+        "identifyingElement": {
+          "testId": "checkout-form"
+        }
+      }
     },
     {
       "id": "order_confirmation",
       "name": "Order Confirmation",
-      "description": "Confirmation page after an order has been placed.",
+      "description": "Success message after placing an order with order number and confirmation email.",
       "invariants": [],
-      "observedCount": 0
+      "observedCount": 2,
+      "source": "both",
+      "metadata": {
+        "identifyingElement": {
+          "testId": "order-success-message"
+        }
+      }
     }
   ],
   "initialState": "home",
@@ -80,114 +106,170 @@
     {
       "id": "t0",
       "from": "home",
-      "to": "product_detail",
+      "to": "products",
       "event": {
         "type": "tap",
         "element": {
-          "testId": "product-card-*"
+          "testId": "nav-products",
+          "type": "link"
         }
       },
-      "frequency": 1
+      "frequency": 4,
+      "source": "session"
     },
     {
       "id": "t1",
-      "from": "product_detail",
-      "to": "cart_with_items",
+      "from": "home",
+      "to": "products",
       "event": {
         "type": "tap",
         "element": {
-          "testId": "add-to-cart-btn"
+          "testId": "hero-browse-btn",
+          "type": "link"
         }
       },
-      "frequency": 2
+      "frequency": 2,
+      "source": "session"
     },
     {
       "id": "t2",
-      "from": "cart_with_items",
-      "to": "checkout",
-      "event": {
-        "type": "tap",
-        "element": {
-          "testId": "checkout-btn"
-        }
-      },
-      "guard": {
-        "type": "literal",
-        "value": true
-      },
-      "frequency": 1
-    },
-    {
-      "id": "t3",
-      "from": "checkout",
-      "to": "order_confirmation",
-      "event": {
-        "type": "tap",
-        "element": {
-          "testId": "place-order-btn"
-        }
-      },
-      "frequency": 1
-    },
-    {
-      "id": "t4",
-      "from": "home",
-      "to": "search_results",
-      "event": {
-        "type": "input",
-        "element": {
-          "testId": "search-input"
-        }
-      },
-      "frequency": 1
-    },
-    {
-      "id": "t5",
-      "from": "search_results",
+      "from": "products",
       "to": "product_detail",
       "event": {
         "type": "tap",
         "element": {
-          "testId": "search-result-*"
+          "testId": "product-view-details-1",
+          "type": "button"
         }
       },
-      "frequency": 1
+      "frequency": 3,
+      "source": "session"
     },
     {
-      "id": "t6",
-      "from": "cart_with_items",
-      "to": "home",
+      "id": "t3",
+      "from": "products",
+      "to": "products",
       "event": {
         "type": "tap",
         "element": {
-          "testId": "continue-shopping-btn"
+          "testId": "product-add-to-cart-1",
+          "type": "button"
         }
       },
-      "frequency": 1
+      "action": {
+        "type": "increment",
+        "variable": "cartItemCount"
+      },
+      "frequency": 2,
+      "source": "session"
+    },
+    {
+      "id": "t4",
+      "from": "product_detail",
+      "to": "products",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "product-detail-add-to-cart-1",
+          "type": "button"
+        }
+      },
+      "action": {
+        "type": "increment",
+        "variable": "cartItemCount"
+      },
+      "frequency": 2,
+      "source": "session"
+    },
+    {
+      "id": "t5",
+      "from": "product_detail",
+      "to": "products",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "modal-close",
+          "type": "button"
+        }
+      },
+      "frequency": 1,
+      "source": "session"
+    },
+    {
+      "id": "t6",
+      "from": "products",
+      "to": "cart",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "nav-cart",
+          "type": "link"
+        }
+      },
+      "frequency": 3,
+      "source": "session"
     },
     {
       "id": "t7",
       "from": "home",
-      "to": "cart_with_items",
+      "to": "cart",
       "event": {
         "type": "tap",
         "element": {
-          "testId": "cart-icon"
+          "testId": "nav-cart",
+          "type": "link"
         }
       },
-      "frequency": 1
+      "frequency": 1,
+      "source": "session"
     },
     {
       "id": "t8",
-      "from": "home",
-      "to": "home",
+      "from": "cart",
+      "to": "checkout",
       "event": {
-        "type": "NAVIGATE",
+        "type": "tap",
         "element": {
-          "testId": " push → home"
+          "testId": "cart-checkout-btn",
+          "type": "button"
         }
       },
-      "frequency": 2
+      "guard": {
+        "type": "comparison",
+        "left": { "type": "variable", "name": "cartItemCount" },
+        "op": ">",
+        "right": { "type": "literal", "value": 0 }
+      },
+      "frequency": 2,
+      "source": "session"
+    },
+    {
+      "id": "t9",
+      "from": "cart",
+      "to": "products",
+      "event": {
+        "type": "tap",
+        "element": {
+          "testId": "cart-continue-shopping-btn",
+          "type": "link"
+        }
+      },
+      "frequency": 1,
+      "source": "session"
+    },
+    {
+      "id": "t10",
+      "from": "checkout",
+      "to": "order_confirmation",
+      "event": {
+        "type": "submit",
+        "element": {
+          "testId": "place-order-btn",
+          "type": "button"
+        }
+      },
+      "frequency": 2,
+      "source": "session"
     }
   ],
   "properties": [
@@ -212,11 +294,38 @@
       }
     }
   ],
+  "cycles": [
+    {
+      "path": ["products", "product_detail", "products"],
+      "type": "navigation",
+      "frequency": 3,
+      "avgIterations": 2,
+      "maxIterations": 4,
+      "classification": "normal",
+      "description": "User browses products, views details, returns to listing"
+    },
+    {
+      "path": ["products", "cart", "products"],
+      "type": "navigation",
+      "frequency": 1,
+      "avgIterations": 1,
+      "maxIterations": 1,
+      "classification": "normal",
+      "description": "User checks cart, continues shopping"
+    }
+  ],
+  "coverage": {
+    "statesFromAst": 6,
+    "statesObserved": 6,
+    "coveragePercent": 100,
+    "unreachedStates": [],
+    "unexpectedFlows": []
+  },
   "metadata": {
     "createdAt": "2025-12-04T18:14:35.749Z",
     "updatedAt": "2025-12-04T18:14:35.749Z",
-    "sessionCount": 2,
+    "sessionCount": 5,
     "platform": "web",
-    "appVersions": []
+    "appVersions": ["0.0.1"]
   }
 }
