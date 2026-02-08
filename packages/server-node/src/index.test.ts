@@ -163,19 +163,21 @@ describe('GET /metrics', () => {
 describe('POST /v1/sessions', () => {
   it('returns 201 for valid session', async () => {
     const session = makeSession();
+    const body = JSON.stringify(session);
     const res = await app.request('/v1/sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Content-Length': String(body.length),
         'X-API-Key': 'test-api-key-123',
       },
-      body: JSON.stringify(session),
+      body,
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.id).toBeTruthy();
-    expect(body.uploadedAt).toBeGreaterThan(0);
-    expect(body.size).toBeGreaterThan(0);
+    const responseBody = await res.json();
+    expect(responseBody.id).toBeTruthy();
+    expect(responseBody.uploadedAt).toBeGreaterThan(0);
+    expect(responseBody.size).toBeGreaterThan(0);
   });
 
   it('returns 400 for invalid content type', async () => {

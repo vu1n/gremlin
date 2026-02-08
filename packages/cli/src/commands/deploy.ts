@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, spawnSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { output, outputError, type OutputOptions } from '../output.ts';
 
@@ -212,10 +212,15 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   };
 
   try {
-    execSync(['docker', ...args].join(' '), {
+    // Use spawnSync with argument array to prevent command injection
+    const result = spawnSync('docker', args, {
       env,
       stdio: detach ? 'pipe' : 'inherit',
+      shell: false,
     });
+    if (result.status !== 0) {
+      throw new Error(`docker compose failed with exit code ${result.status}`);
+    }
   } catch (err) {
     const message = `Failed to start docker compose: ${err instanceof Error ? err.message : String(err)}`;
     outputError('deploy.docker', [message], options);
@@ -229,7 +234,13 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   let containerId: string | undefined;
   if (detach) {
     try {
-      containerId = execSync('docker compose ps -q gremlin-server', { encoding: 'utf-8' }).trim();
+      const result = spawnSync('docker', ['compose', 'ps', '-q', 'gremlin-server'], {
+        encoding: 'utf-8',
+        shell: false,
+      });
+      if (result.stdout) {
+        containerId = result.stdout.trim();
+      }
     } catch {
       // Non-critical, continue without container ID
     }
@@ -310,10 +321,12 @@ export async function deployStatus(options: DeployStatusOptions): Promise<Deploy
   // Check docker
   const docker: DeployStatusResult['docker'] = { running: false };
   try {
-    const psOutput = execSync('docker compose ps --format json', {
+    const result = spawnSync('docker', ['compose', 'ps', '--format', 'json'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+      shell: false,
+    });
+    const psOutput = result.stdout?.trim();
     if (psOutput) {
       // docker compose ps --format json outputs one JSON object per line
       const lines = psOutput.split('\n').filter(Boolean);
@@ -441,12 +454,16 @@ export async function deployStop(options: DeployStopOptions): Promise<DeployStop
   // Stop docker
   if (target === 'docker' || target === 'all') {
     try {
-      execSync('docker compose down', {
+      const dockerResult = spawnSync('docker', ['compose', 'down'], {
         stdio: 'pipe',
+        shell: false,
       });
-      result.docker = { stopped: true };
+      if (dockerResult.status === 0) {
+        result.docker = { stopped: true };
+      }
     } catch {
       // docker compose not available or nothing to stop
+      result.docker = { stopped: true };
     }
   }
 

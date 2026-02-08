@@ -480,4 +480,30 @@ export function registerApiRoutes(
       500
     );
   });
+
+  // Add security headers middleware
+  app.use('/*', async (c, next) => {
+    await next();
+
+    // Security headers for all responses
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('X-Frame-Options', 'DENY');
+    c.header('X-XSS-Protection', '1; mode=block');
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+    // Content Security Policy (basic, allow data: for images)
+    c.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self';"
+    );
+
+    // Referrer Policy
+    c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    // Permissions Policy (restrict browser features)
+    c.header(
+      'Permissions-Policy',
+      'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()'
+    );
+  });
 }

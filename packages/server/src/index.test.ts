@@ -158,11 +158,15 @@ describe('Gremlin API', () => {
   describe('Session Upload', () => {
     test('uploads a valid session', async () => {
       const session = createTestSession();
+      const body = JSON.stringify(session);
 
       const response = await makeRequest('/v1/sessions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(session),
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': String(body.length),
+        },
+        body,
       });
 
       expect(response.status).toBe(201);

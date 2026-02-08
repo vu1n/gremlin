@@ -97,13 +97,22 @@ async function detectRunners(testsDir: string): Promise<TestRunner[]> {
 }
 
 /**
+ * Sanitize file path to prevent shell injection
+ */
+function sanitizePath(path: string): string {
+  // Remove any shell metacharacters and limit length
+  return path.replace(/[;&|`$(){}[\]<>*?]/g, '').slice(0, 500);
+}
+
+/**
  * Run Playwright tests
  */
 async function runPlaywright(options: RunOptions): Promise<number> {
   const args = ['playwright', 'test'];
 
   if (options.test) {
-    args.push(options.test);
+    // Sanitize test file path to prevent shell injection
+    args.push(sanitizePath(options.test));
   }
 
   if (options.headed) {
@@ -133,7 +142,7 @@ async function runPlaywright(options: RunOptions): Promise<number> {
     const proc = spawn('npx', args, {
       cwd: playwrightDir,
       stdio: options.json ? 'pipe' : 'inherit',
-      shell: true,
+      shell: false, // Disable shell to prevent injection
     });
 
     proc.on('close', (code) => {
@@ -157,13 +166,15 @@ async function runMaestro(options: RunOptions): Promise<number> {
   const args: string[] = [];
 
   if (options.test) {
-    args.push('test', join(maestroDir, options.test));
+    // Sanitize test file path to prevent shell injection
+    args.push('test', join(maestroDir, sanitizePath(options.test)));
   } else {
     args.push('test', maestroDir);
   }
 
   if (options.device) {
-    args.push('--device', options.device);
+    // Sanitize device name to prevent shell injection
+    args.push('--device', sanitizePath(options.device));
   }
 
   if (!options.json) {
@@ -177,7 +188,7 @@ async function runMaestro(options: RunOptions): Promise<number> {
   return new Promise((resolve) => {
     const proc = spawn('maestro', args, {
       stdio: options.json ? 'pipe' : 'inherit',
-      shell: true,
+      shell: false, // Disable shell to prevent injection
     });
 
     proc.on('close', (code) => {
@@ -339,7 +350,7 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
     const proc = spawn('npx', args, {
       cwd: perfDir,
       stdio: ['pipe', 'pipe', json ? 'pipe' : 'inherit'],
-      shell: true,
+      shell: false, // Disable shell to prevent injection
     });
 
     proc.stdout?.on('data', (data: Buffer) => {

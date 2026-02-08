@@ -116,8 +116,10 @@ export class GremlinReplayer {
       this.pollTimer = null;
     }
 
-    // Clear container
-    this.config.container.innerHTML = '';
+    // Clear container safely (prevent XSS)
+    while (this.config.container.firstChild) {
+      this.config.container.removeChild(this.config.container.firstChild);
+    }
 
     // Create player
     this.player = new rrwebPlayer({
@@ -235,7 +237,10 @@ export class GremlinReplayer {
     }
     this.session = null;
     this.isPlaying = false;
-    this.config.container.innerHTML = '';
+    // Clear container safely (prevent XSS)
+    while (this.config.container.firstChild) {
+      this.config.container.removeChild(this.config.container.firstChild);
+    }
   }
 
   // ========================================================================

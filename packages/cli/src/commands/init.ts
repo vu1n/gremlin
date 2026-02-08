@@ -7,7 +7,7 @@
  */
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, copyFileSync } from 'fs';
-import { join, basename } from 'path';
+import { join, basename, resolve } from 'path';
 import { execSync } from 'child_process';
 import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from '../detect.ts';
 import { output, outputError, type OutputOptions } from '../output.ts';
@@ -149,7 +149,18 @@ export async function init(options: InitOptions): Promise<InitResult> {
   if (options.instrument) {
     const entryPoint = findEntryPoint(framework);
     if (entryPoint) {
-      const fullPath = join(cwd, entryPoint);
+      // Resolve and validate path to prevent directory traversal
+      const fullPath = resolve(cwd, entryPoint);
+
+      // Ensure the resolved path is within the current working directory
+      if (!fullPath.startsWith(resolve(cwd))) {
+        const msg = `Security error: Invalid entry point path (potential path traversal attack)`;
+        if (!outputError('init', [msg], options)) {
+          console.error(`Error: ${msg}`);
+        }
+        process.exit(1);
+      }
+
       const backupPath = fullPath + '.gremlin-backup';
       const original = readFileSync(fullPath, 'utf-8');
 
