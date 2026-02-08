@@ -248,7 +248,15 @@ export class PostHogImporter {
 
     // Extract app info from URL
     const appUrl = metaData?.href || recording.person?.properties?.['$host'];
-    const url = appUrl ? new URL(appUrl as string) : null;
+    let url: URL | null = null;
+    if (appUrl) {
+      try {
+        const raw = String(appUrl);
+        url = new URL(raw.includes('://') ? raw : `https://${raw}`);
+      } catch {
+        // Invalid URL — fall through to defaults
+      }
+    }
 
     const app: AppInfo = {
       name: url?.hostname || 'unknown',

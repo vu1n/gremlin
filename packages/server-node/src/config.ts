@@ -60,5 +60,5 @@ function parseOrigins(value: string): string | string[] {
     return '*';
   }
 
-  return parts.length === 1 ? parts[0] : parts;
+  return parts;
 }

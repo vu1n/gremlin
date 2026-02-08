@@ -52,13 +52,19 @@ export interface TransportResult {
   error?: string;
 }
 
-// Try to import AsyncStorage if available
-let AsyncStorage: any = null;
-try {
-  // Dynamic import to avoid hard dependency
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch {
-  // AsyncStorage not installed - fallback disabled
+// Lazy-load AsyncStorage to avoid Metro bundling issues with optional peer deps
+let _asyncStorage: any;
+let _asyncStorageResolved = false;
+
+function getAsyncStorage(): any {
+  if (_asyncStorageResolved) return _asyncStorage;
+  _asyncStorageResolved = true;
+  try {
+    _asyncStorage = require('@react-native-async-storage/async-storage').default;
+  } catch {
+    _asyncStorage = null;
+  }
+  return _asyncStorage;
 }
 
 // ============================================================================
@@ -85,7 +91,7 @@ export class LocalTransport {
       console.log('[GremlinTransport] Initialized', {
         endpoint: this.config.endpoint,
         fallbackToStorage: this.config.fallbackToStorage,
-        asyncStorageAvailable: !!AsyncStorage,
+        asyncStorageAvailable: !!getAsyncStorage(),
       });
     }
   }
@@ -135,7 +141,7 @@ export class LocalTransport {
     }
 
     // Fall back to AsyncStorage if enabled and available
-    if (this.config.fallbackToStorage && AsyncStorage) {
+    if (this.config.fallbackToStorage && getAsyncStorage()) {
       return this.saveToStorage(session);
     }
 
@@ -228,6 +234,7 @@ export class LocalTransport {
    * Flush any sessions stored in AsyncStorage to the server.
    */
   async flushStoredSessions(): Promise<number> {
+    const AsyncStorage = getAsyncStorage();
     if (!AsyncStorage) return 0;
 
     try {
@@ -274,7 +281,11 @@ export class LocalTransport {
     const events = [...this.pendingEvents];
     this.pendingEvents = [];
 
-    await this.uploadBatch(this.sessionId, events);
+    const result = await this.uploadBatch(this.sessionId, events);
+    if (!result.success) {
+      // Prepend failed events back so they're retried on next flush
+      this.pendingEvents = [...events, ...this.pendingEvents];
+    }
   }
 
   private async tryServer(session: GremlinSession): Promise<TransportResult> {
@@ -323,6 +334,7 @@ export class LocalTransport {
   }
 
   private async saveToStorage(session: GremlinSession): Promise<TransportResult> {
+    const AsyncStorage = getAsyncStorage();
     if (!AsyncStorage) {
       return {
         success: false,

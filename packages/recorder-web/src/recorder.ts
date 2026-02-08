@@ -271,6 +271,7 @@ export class GremlinRecorder extends BaseRecorder {
     }
 
     super.start();
+    this.networkRequestCounter = 0;
     this.navigationStartTime = Date.now();
 
     // Start streaming transport if enabled
@@ -333,8 +334,8 @@ export class GremlinRecorder extends BaseRecorder {
         session.performance = sessionPerformance;
       }
 
-      // Add rrweb events to session for replay
-      (session as any).rrwebEvents = this.rrwebEvents;
+      // Snapshot rrweb events at stop time to avoid async upload races
+      (session as any).rrwebEvents = [...this.rrwebEvents];
 
       console.log(
         `GremlinRecorder: Stopped session ${session.header.sessionId} - ` +
@@ -396,6 +397,10 @@ export class GremlinRecorder extends BaseRecorder {
     if (this.performanceMonitor) {
       this.performanceMonitor.stop();
       this.performanceMonitor = null;
+    }
+    if (this.streamingTransport) {
+      this.streamingTransport.stop();
+      this.streamingTransport = null;
     }
     this.removeEventListeners();
     this.restoreHistoryApi();
@@ -652,15 +657,15 @@ export class GremlinRecorder extends BaseRecorder {
   };
 
   private handlePopState = (): void => {
-    this.recordNavigationEvent();
+    this.recordNavigationWithType('pop');
   };
 
-  private recordNavigationEvent(): void {
+  private recordNavigationWithType(navType: 'push' | 'pop' | 'replace' = 'push'): void {
     if (!this.isRecording()) return;
 
     this.navigationStartTime = Date.now();
     this.performanceMonitor?.markNavigation();
-    this.recordNavigation(document.title, 'push', undefined, window.location.href);
+    this.recordNavigation(document.title, navType, undefined, window.location.href);
   }
 
   private handleError = (event: Event): void => {
@@ -710,12 +715,12 @@ export class GremlinRecorder extends BaseRecorder {
 
     history.pushState = (...args) => {
       this.originalPushState!.apply(history, args);
-      this.recordNavigationEvent();
+      this.recordNavigationWithType('push');
     };
 
     history.replaceState = (...args) => {
       this.originalReplaceState!.apply(history, args);
-      this.recordNavigationEvent();
+      this.recordNavigationWithType('replace');
     };
   }
 
@@ -1046,13 +1051,14 @@ export class GremlinRecorder extends BaseRecorder {
     (this as any).lastEventTimestamp = Date.now();
     (this as any).elementMap = new Map();
 
-    // Rebuild element map from session
+    // Rebuild element map using same key generation as BaseRecorder.getOrCreateElement
+    let unknownCount = 0;
     session.elements.forEach((el, idx) => {
-      const key = el.testId || el.accessibilityLabel || el.text || `_unknown_${idx}`;
+      const key = el.testId || el.accessibilityLabel || el.text || `_unknown_${unknownCount++}`;
       (this as any).elementMap.set(key, idx);
     });
     // Sync the unknownElementCounter so new elements don't collide
-    (this as any).unknownElementCounter = session.elements.length;
+    (this as any).unknownElementCounter = unknownCount;
 
     // Restore rrweb events if available
     if (Array.isArray(rrwebEventsData)) {

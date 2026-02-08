@@ -83,8 +83,14 @@ export async function dev(options: DevOptions): Promise<void> {
     console.log('');
   }
 
-  let sessionCount = 0;
-  const knownSessionIds = new Set<string>();
+  // Initialize from existing session files on disk
+  const existingFiles = existsSync(output)
+    ? readdirSync(output).filter((f) => f.endsWith('.json') && !f.endsWith('.tmp'))
+    : [];
+  const knownSessionIds = new Set<string>(
+    existingFiles.map((f) => f.replace('.json', ''))
+  );
+  let sessionCount = knownSessionIds.size;
 
   // Per-session lock to prevent read-modify-write races on concurrent appends
   const sessionLocks = new Map<string, Promise<unknown>>();

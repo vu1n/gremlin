@@ -153,7 +153,7 @@ export async function listSessions(
       sessions,
       cursor: listed.truncated ? listed.cursor : undefined,
       hasMore: listed.truncated,
-      totalCount: sessions.length,
+      // totalCount omitted: R2 paginated list doesn't provide total count
     };
   } catch (error) {
     console.error('Error listing sessions:', error);

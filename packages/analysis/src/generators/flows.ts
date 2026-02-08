@@ -91,6 +91,60 @@ export function extractFlows(spec: GremlinSpec): Flow[] {
 
   dfs(spec.initialState, [], 10);
 
+  // Fallback for SPAs: if no terminal states exist, extract flows from
+  // longest DFS paths (dead ends or max depth) instead of requiring terminals
+  if (flows.length === 0 && terminalStates.size === 0) {
+    function dfsFallback(
+      currentState: StateId,
+      path: Transition[],
+      maxDepth: number
+    ): void {
+      if (maxDepth <= 0 && path.length > 0) {
+        recordFallbackFlow(path);
+        return;
+      }
+
+      const outgoing = spec.transitions.filter((t) => t.from === currentState);
+      const available = outgoing.filter((t) => !path.some((p) => p.id === t.id));
+
+      if (available.length === 0 && path.length > 0) {
+        recordFallbackFlow(path);
+        return;
+      }
+
+      for (const transition of available) {
+        dfsFallback(transition.to, [...path, transition], maxDepth - 1);
+      }
+    }
+
+    function recordFallbackFlow(path: Transition[]): void {
+      const pathKey = path.map((t) => t.id).join('->');
+      if (visited.has(pathKey)) return;
+      visited.add(pathKey);
+
+      const startState = path[0].from;
+      const endState = path[path.length - 1].to;
+      const keyEvents = path
+        .slice(0, 3)
+        .map((t) => t.event.element?.testId || t.event.type)
+        .join('_');
+      const flowIndex = flows.filter(
+        (f) => f.startState === startState && f.endState === endState
+      ).length;
+      const uniqueSuffix = flowIndex > 0 ? `_${flowIndex + 1}` : '';
+
+      flows.push({
+        name: `${getStateName(spec, startState)}_to_${getStateName(spec, endState)}${uniqueSuffix}`,
+        description: `Flow from ${getStateName(spec, startState)} to ${getStateName(spec, endState)} via ${keyEvents}`,
+        transitions: [...path],
+        startState,
+        endState,
+      });
+    }
+
+    dfsFallback(spec.initialState, [], 10);
+  }
+
   // Sort by frequency (most common paths first)
   flows.sort((a, b) => {
     const freqA = a.transitions.reduce((sum, t) => sum + t.frequency, 0);

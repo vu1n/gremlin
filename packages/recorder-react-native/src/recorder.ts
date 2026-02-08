@@ -142,6 +142,7 @@ export class GremlinRecorder extends BaseRecorder {
 
     // BaseRecorder creates session, sets recording=true, initializes timestamps
     super.start();
+    this.networkRequestCounter = 0;
 
     // Start transport batching if enabled
     const session = this.getSession();

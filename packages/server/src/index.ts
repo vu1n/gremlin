@@ -21,6 +21,16 @@ import {
   getSessionPerformance,
 } from './storage';
 
+/** Constant-time string comparison to prevent timing attacks */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // ============================================================================
@@ -60,7 +70,10 @@ const authMiddleware = async (c: any, next: any) => {
     );
   }
 
-  if (apiKey !== c.env.API_KEY) {
+  // Constant-time comparison to prevent timing attacks
+  const keysMatch = timingSafeEqual(apiKey, c.env.API_KEY);
+
+  if (!keysMatch) {
     return c.json(
       {
         error: {

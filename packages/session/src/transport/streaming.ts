@@ -192,22 +192,30 @@ export class StreamingTransport {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
 
+    // Snapshot and swap (same pattern as flush) to avoid races
+    const events = this.pendingEvents;
+    const rrwebEvents = this.pendingRrwebEvents;
+    this.pendingEvents = [];
+    this.pendingRrwebEvents = [];
+
     const payload = {
       sessionId: this.sessionId,
-      events: this.pendingEvents,
-      rrwebEvents: this.pendingRrwebEvents,
+      events,
+      rrwebEvents,
     };
 
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const sent = navigator.sendBeacon(`${this.config.endpoint}/session/append`, blob);
 
+    if (!sent) {
+      // Beacon failed — restore events so flush() can retry
+      this.pendingEvents = [...events, ...this.pendingEvents];
+      this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
+    }
+
     if (this.config.debug) {
       console.log(`[StreamingTransport] Beacon flush: ${sent ? 'sent' : 'failed'}`);
     }
-
-    // Clear pending
-    this.pendingEvents = [];
-    this.pendingRrwebEvents = [];
   }
 
   /**

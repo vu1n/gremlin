@@ -77,7 +77,7 @@ function extractAccessibilityLabel(element: HTMLElement): string | undefined {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     const id = element.id;
     if (id) {
-      const label = document.querySelector(`label[for="${id}"]`);
+      const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
       if (label?.textContent) {
         return label.textContent.trim();
       }
