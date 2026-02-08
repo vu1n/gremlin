@@ -41,7 +41,7 @@ export async function storeSession(
   const metadata: Record<string, string> = {
     sessionId,
     startTime: session.header.startTime.toString(),
-    endTime: session.header.endTime?.toString() || '',
+    endTime: session.header.endTime != null ? session.header.endTime.toString() : '',
     platform: session.header.device.platform,
     appName: session.header.app.name,
     appVersion: session.header.app.version,

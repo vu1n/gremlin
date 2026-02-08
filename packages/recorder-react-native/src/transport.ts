@@ -291,10 +291,10 @@ export class LocalTransport {
   }
 
   private async tryServer(session: GremlinSession): Promise<TransportResult> {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
+    try {
       const response = await fetch(`${this.config.endpoint}/session`, {
         method: 'POST',
         headers: {
@@ -324,6 +324,7 @@ export class LocalTransport {
         error: `Server returned ${response.status}`,
       };
     } catch (e) {
+      clearTimeout(timeout);
       this.serverAvailable = false;
       const error = e instanceof Error ? e.message : 'Unknown error';
 

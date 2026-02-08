@@ -6,16 +6,10 @@
 
 import { InteractionManager } from 'react-native';
 
-// Local type definition
-export interface PerformanceSample {
-  timestamp?: number;
-  fps?: number;
-  memory?: number;
-  jsThreadBusy?: boolean;
-  jsThreadLag?: number;
-  memoryUsage?: number;
-  timeSinceNavigation?: number;
-}
+// Re-export the canonical PerformanceSample from @gremlin/session
+// so consumers get the correct type for server-side aggregation
+import type { PerformanceSample } from '@gremlin/session';
+export type { PerformanceSample };
 
 export interface PerformanceMonitorConfig {
   /** Sample interval (ms) */

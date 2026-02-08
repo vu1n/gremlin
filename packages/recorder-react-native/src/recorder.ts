@@ -797,7 +797,10 @@ export class GremlinRecorder extends BaseRecorder {
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
     if (!this.isRecording()) return;
 
-    // Use BaseRecorder's recordAppState which handles flush on background
+    // Only record known app states (ignore 'unknown', 'extension', etc.)
+    const validStates = ['active', 'background', 'inactive'] as const;
+    if (!validStates.includes(nextAppState as any)) return;
+
     this.recordAppState(nextAppState as 'active' | 'background' | 'inactive');
   };
 }

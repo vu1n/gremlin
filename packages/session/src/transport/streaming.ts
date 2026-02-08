@@ -93,7 +93,10 @@ export class StreamingTransport {
    * Stop streaming. Flushes any pending events.
    */
   stop(): void {
-    // Final flush
+    // Capture sessionId before nulling so in-flight flush retries still work
+    const sid = this.sessionId;
+
+    // Final flush (uses this.sessionId which is still set)
     this.flush();
 
     // Clear timer
@@ -109,10 +112,12 @@ export class StreamingTransport {
     }
 
     if (this.config.debug) {
-      console.log(`[StreamingTransport] Stopped for session ${this.sessionId}`);
+      console.log(`[StreamingTransport] Stopped for session ${sid}`);
     }
 
-    // Don't reset this.flushing -- let the in-flight flush's .finally() handle it
+    // Null sessionId AFTER flush() has captured it into the payload.
+    // If flush() was skipped (flushing guard), the in-flight flush already
+    // captured sessionId and its retry path uses the payload's copy.
     this.sessionId = null;
   }
 
@@ -167,11 +172,12 @@ export class StreamingTransport {
     this.pendingRrwebEvents = [];
     this.flushing = true;
 
-    // Send async — restore events on failure
+    // Send async — restore events on failure only if still active
     this.sendBatch(payload)
       .then((success) => {
-        if (!success) {
+        if (!success && this.sessionId) {
           // Prepend failed events back so they're retried on next flush
+          // (skip if stopped — sessionId is null and events can't be re-sent)
           this.pendingEvents = [...events, ...this.pendingEvents];
           this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
         }

@@ -173,6 +173,11 @@ export class LocalTransport {
           return { success: true, method: 'server' };
         }
 
+        // Don't retry client errors (4xx) — they won't succeed on retry
+        if (response.status >= 400 && response.status < 500) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
         return {
           success: false,
           method: 'server',

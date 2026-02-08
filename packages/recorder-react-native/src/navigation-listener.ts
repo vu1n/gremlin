@@ -157,9 +157,11 @@ export class NavigationListener {
       return 'push';
     }
 
-    // Check if it's a pop (going back in history)
-    const previousIndex = this.routeHistory.lastIndexOf(current.name);
-    if (previousIndex >= 0 && previousIndex < this.routeHistory.length - 1) {
+    // Check if it's a pop (going back): the current screen was the one
+    // immediately before the previous screen in recent history.
+    // Only check the tail of history to avoid false positives from revisited screens.
+    const histLen = this.routeHistory.length;
+    if (histLen >= 2 && this.routeHistory[histLen - 2] === current.name) {
       return 'pop';
     }
 

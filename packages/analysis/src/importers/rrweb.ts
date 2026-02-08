@@ -462,7 +462,6 @@ export class RrwebImporter {
 
     switch (data.type) {
       case MouseInteractions.Click:
-      case MouseInteractions.MouseUp:
         return [
           {
             type: EventTypeEnum.TAP,
@@ -618,14 +617,13 @@ export class RrwebImporter {
       attributes: node.attributes,
     };
 
-    // Check if element already exists
-    const existingIndex = session.elements.findIndex(
-      (e) =>
-        e.testId === elementInfo.testId &&
-        e.text === elementInfo.text &&
-        e.type === elementInfo.type &&
-        e.cssSelector === elementInfo.cssSelector
-    );
+    // Key-based dedup matching BaseRecorder.getOrCreateElement
+    const key = elementInfo.testId || elementInfo.accessibilityLabel || elementInfo.text;
+    const existingIndex = key
+      ? session.elements.findIndex(
+          (e) => (e.testId || e.accessibilityLabel || e.text) === key
+        )
+      : -1;
 
     if (existingIndex !== -1) {
       return existingIndex;

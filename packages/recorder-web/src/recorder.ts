@@ -597,6 +597,16 @@ export class GremlinRecorder extends BaseRecorder {
     if (!this.isRecording()) return;
 
     const target = event.target;
+
+    // Handle contenteditable elements (rich text editors like Tiptap, Slate, etc.)
+    if (target instanceof HTMLElement && target.isContentEditable &&
+        !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+      const elementInfo = captureElement(target);
+      const value = this.webConfig.maskInputs ? '***' : (target.textContent ?? '');
+      this.recordInput(value, 'text', elementInfo);
+      return;
+    }
+
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
       return;
     }
@@ -1056,6 +1066,10 @@ export class GremlinRecorder extends BaseRecorder {
       // This is a special case for persistence - normally use start()
       this.restoreSession(state.session, state.rrwebEvents);
       this.navigationStartTime = state.navigationStartTime || Date.now();
+
+      if (!state.rrwebEvents) {
+        console.warn('GremlinRecorder: rrweb events not persisted (storage quota). DOM replay will start from this page.');
+      }
 
       return true;
     } catch (e) {
