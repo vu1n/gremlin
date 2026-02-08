@@ -5,7 +5,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
+import { cwd } from 'process';
 
 // ============================================================================
 // Types
@@ -53,8 +54,36 @@ export interface PerfBaseline {
 
 const DEFAULT_PATH = '.gremlin/perf-baseline.json';
 
+/**
+ * Validate path is within project directory to prevent path traversal attacks
+ */
+function validatePath(path: string): void {
+  const resolved = resolve(cwd(), path);
+
+  // Ensure path is within current working directory
+  if (!resolved.startsWith(resolve(cwd()))) {
+    throw new Error(
+      `Security error: Invalid path "${path}" (potential path traversal attack). ` +
+      `Path must be within the current working directory.`
+    );
+  }
+
+  // Ensure path is within .gremlin directory (defense in depth)
+  const gremlinDir = resolve(cwd(), '.gremlin');
+  if (!resolved.startsWith(gremlinDir)) {
+    throw new Error(
+      `Security error: Invalid path "${path}". ` +
+      `Baseline files must be within the .gremlin directory.`
+    );
+  }
+}
+
 export function readBaseline(path?: string): PerfBaseline | null {
   const p = path ?? DEFAULT_PATH;
+
+  // Validate path to prevent directory traversal
+  validatePath(p);
+
   if (!existsSync(p)) return null;
   try {
     const content = readFileSync(p, 'utf-8');
@@ -66,6 +95,10 @@ export function readBaseline(path?: string): PerfBaseline | null {
 
 export function writeBaseline(baseline: PerfBaseline, path?: string): void {
   const p = path ?? DEFAULT_PATH;
+
+  // Validate path to prevent directory traversal
+  validatePath(p);
+
   const dir = dirname(p);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

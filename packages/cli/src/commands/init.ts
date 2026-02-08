@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, copyFileSync } from 'fs';
 import { join, basename, resolve } from 'path';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from '../detect.ts';
 import { output, outputError, type OutputOptions } from '../output.ts';
 
@@ -126,7 +126,17 @@ export async function init(options: InitOptions): Promise<InitResult> {
       console.log(`  [ ] Installing ${info.sdkPackage}...`);
     }
     try {
-      execSync(`bun add ${info.sdkPackage}`, { cwd, stdio: 'pipe' });
+      // Use spawnSync with argument array to prevent command injection
+      const result = spawnSync('bun', ['add', info.sdkPackage], {
+        cwd,
+        stdio: 'pipe',
+        shell: false,
+      });
+
+      if (result.status !== 0) {
+        throw new Error(`bun add failed with exit code ${result.status}`);
+      }
+
       if (!options.json) {
         console.log(`  [x] Installed ${info.sdkPackage}`);
       }

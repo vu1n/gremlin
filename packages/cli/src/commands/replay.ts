@@ -557,14 +557,26 @@ function generateMobileReplayHtml(session: any, speed: number): string {
       return mins > 0 ? mins + ':' + s.padStart(4, '0') : '0:' + s.padStart(4, '0');
     }
 
+    // HTML escape function to prevent XSS
+    function escapeHtml(unsafe: string | number | undefined): string {
+      if (unsafe === undefined || unsafe === null) return '';
+      const str = String(unsafe);
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     function renderEventList() {
       const list = document.getElementById('eventList');
       list.innerHTML = events.map((e, i) => {
         const icon = getEventIcon(e);
-        const desc = getEventDesc(e);
-        const time = formatTime(eventTimes[i]);
+        const desc = escapeHtml(getEventDesc(e));
+        const time = escapeHtml(formatTime(eventTimes[i]));
         return '<div class="event-item" id="event-' + i + '">' +
-          '<span class="event-icon">' + icon + '</span>' +
+          '<span class="event-icon">' + escapeHtml(icon) + '</span>' +
           '<span class="event-time">' + time + '</span>' +
           '<span class="event-desc">' + desc + '</span></div>';
       }).join('');
@@ -592,13 +604,13 @@ function generateMobileReplayHtml(session: any, speed: number): string {
 
     function getEventDesc(e) {
       const kind = e.data?.kind;
-      if (kind === 'tap') return 'Tap at (' + e.data.x + ', ' + e.data.y + ')';
-      if (kind === 'swipe') return 'Swipe ' + e.data.direction;
+      if (kind === 'tap') return 'Tap at (' + escapeHtml(e.data.x) + ', ' + escapeHtml(e.data.y) + ')';
+      if (kind === 'swipe') return 'Swipe ' + escapeHtml(e.data.direction);
       if (kind === 'scroll') return 'Scroll';
-      if (kind === 'input') return 'Input: ' + (e.data.masked ? '***' : e.data.value?.slice(0,20));
-      if (kind === 'navigation') return 'Navigate to ' + e.data.screen;
-      if (kind === 'app_state') return 'App ' + e.data.state;
-      return kind || 'Event';
+      if (kind === 'input') return 'Input: ' + (e.data.masked ? '***' : escapeHtml(e.data.value?.slice(0,20)));
+      if (kind === 'navigation') return 'Navigate to ' + escapeHtml(e.data.screen);
+      if (kind === 'app_state') return 'App ' + escapeHtml(e.data.state);
+      return escapeHtml(kind) || 'Event';
     }
 
     function togglePlay() {
