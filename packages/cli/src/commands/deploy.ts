@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { spawn, execSync, spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { output, outputError, type OutputOptions } from '../output.ts';
 

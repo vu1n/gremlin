@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, copyFileSync } from 'fs';
 import { join, basename, resolve } from 'path';
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from '../detect.ts';
 import { output, outputError, type OutputOptions } from '../output.ts';
 
