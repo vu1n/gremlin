@@ -121,6 +121,7 @@ export class LocalTransport {
    * Stop batch uploading.
    */
   stopBatching(): void {
+    this.flushBatch();
     if (this.batchTimer) {
       clearInterval(this.batchTimer);
       this.batchTimer = null;

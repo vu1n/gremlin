@@ -114,6 +114,7 @@ export class EventBatcher {
    * Clean up timers. Call on destroy/unmount.
    */
   destroy(): void {
+    this.flush();
     if (this.scrollFlushTimer !== null) {
       clearTimeout(this.scrollFlushTimer);
       this.scrollFlushTimer = null;

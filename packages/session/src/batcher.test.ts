@@ -155,10 +155,10 @@ describe('EventBatcher', () => {
       expect(batcher.hasPendingBatch()).toBe(false);
     });
 
-    it('does not emit pending events on destroy', () => {
+    it('flushes pending events on destroy', () => {
       batcher.addScroll(0, 10);
       batcher.destroy();
-      expect(emitted).toHaveLength(0);
+      expect(emitted).toHaveLength(1);
     });
   });
 

@@ -868,11 +868,11 @@ export function fuzzTestsToPlaywrightFile(
 // ============================================================================
 
 export function createSeededRandom(seed: number): () => number {
-  let state = seed;
+  let state = seed >>> 0; // Ensure unsigned 32-bit integer
   return () => {
-    // Simple LCG random number generator
-    state = (state * 1664525 + 1013904223) % 2 ** 32;
-    return state / 2 ** 32;
+    // Simple LCG random number generator — use Math.imul for safe 32-bit multiply
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x1_0000_0000;
   };
 }
 
@@ -884,6 +884,7 @@ function escapeString(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
+    .replace(/`/g, '\\`')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t');

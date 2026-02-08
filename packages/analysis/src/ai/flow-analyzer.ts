@@ -643,6 +643,7 @@ async function callGeminiRaw(
     },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 8192 },
     }),
   });
 
@@ -755,7 +756,10 @@ function convertToGremlinSpec(
 
 function parseEvent(eventStr: string): TransitionEvent {
   // Parse event strings like "tap:checkout-btn", "input:email-field", "navigation:home"
-  const [type, target] = eventStr.split(':');
+  // Split on first colon only so targets like "tap:checkout:btn" keep "checkout:btn"
+  const colonIdx = eventStr.indexOf(':');
+  const type = colonIdx >= 0 ? eventStr.slice(0, colonIdx) : eventStr;
+  const target = colonIdx >= 0 ? eventStr.slice(colonIdx + 1) : undefined;
 
   const eventType = type as TransitionEvent['type'];
 

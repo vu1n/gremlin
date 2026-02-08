@@ -524,8 +524,8 @@ describe('BaseRecorder', () => {
   });
 
   describe('getTapsToScreen', () => {
-    it('returns 0 when not recording', () => {
-      expect(recorder.getTapsToScreen('Home')).toBe(0);
+    it('returns null when not recording', () => {
+      expect(recorder.getTapsToScreen('Home')).toBeNull();
     });
 
     it('counts taps before reaching a screen', () => {

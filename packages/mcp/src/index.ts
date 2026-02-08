@@ -288,7 +288,7 @@ server.tool(
     app: z.string().optional().describe('Filter by app name'),
     since: z.string().optional().describe('Filter after this ISO date'),
   },
-  async ({ since }) => {
+  async ({ app, since }) => {
     const analyticsDir = gremlinPath('analytics');
 
     if (!existsSync(analyticsDir)) {
@@ -315,6 +315,14 @@ server.tool(
         const sinceDate = new Date(since);
         const fileDate = new Date(entry.timestamp);
         if (fileDate < sinceDate) continue;
+      }
+
+      // Filter by app name if provided
+      if (app) {
+        const sessionsDir = gremlinPath('sessions');
+        const sessionFile = join(sessionsDir, `${entry.sessionId}.json`);
+        const session = readJsonFile<GremlinSession>(sessionFile);
+        if (session && (session.header?.app?.name ?? 'unknown') !== app) continue;
       }
 
       entries.push(entry);

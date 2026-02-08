@@ -70,6 +70,19 @@ const authMiddleware = async (c: any, next: any) => {
     );
   }
 
+  // Guard against unconfigured API_KEY
+  if (!c.env.API_KEY) {
+    return c.json(
+      {
+        error: {
+          code: 'SERVER_ERROR',
+          message: 'API key not configured on server',
+        },
+      } as ErrorResponse,
+      500
+    );
+  }
+
   // Constant-time comparison to prevent timing attacks
   const keysMatch = timingSafeEqual(apiKey, c.env.API_KEY);
 

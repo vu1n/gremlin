@@ -141,6 +141,7 @@ export class GremlinRecorder extends BaseRecorder {
   private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
   private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
   private networkRequestCounter = 0;
+  private xhrMetadata = new WeakMap<XMLHttpRequest, { method: string; url: string }>();
 
   /** rrweb events for session replay */
   private rrwebEvents: eventWithTime[] = [];
@@ -505,6 +506,12 @@ export class GremlinRecorder extends BaseRecorder {
     const stopFn = record({
       emit: (event: eventWithTime) => {
         if (this.webConfig.captureRrweb) {
+          // Cap rrweb events to prevent unbounded memory growth in long sessions
+          const MAX_RRWEB_EVENTS = 10_000;
+          if (this.rrwebEvents.length >= MAX_RRWEB_EVENTS) {
+            // Keep the most recent 75% to preserve continuity
+            this.rrwebEvents = this.rrwebEvents.slice(-Math.floor(MAX_RRWEB_EVENTS * 0.75));
+          }
           this.rrwebEvents.push(event);
         }
         // Stream rrweb event if enabled
@@ -880,14 +887,14 @@ export class GremlinRecorder extends BaseRecorder {
       url: string | URL,
       ...rest: any[]
     ) {
-      (this as any).__gremlin_method = method;
-      (this as any).__gremlin_url = typeof url === 'string' ? url : url.href;
+      recorder.xhrMetadata.set(this, { method, url: typeof url === 'string' ? url : url.href });
       return recorder.originalXhrOpen!.apply(this, [method, url, ...rest] as any);
     };
 
     XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-      const method: string = (this as any).__gremlin_method ?? 'GET';
-      const url: string = (this as any).__gremlin_url ?? '';
+      const meta = recorder.xhrMetadata.get(this);
+      const method: string = meta?.method ?? 'GET';
+      const url: string = meta?.url ?? '';
 
       if (recorder.shouldIgnoreUrl(url)) {
         return recorder.originalXhrSend!.call(this, body);

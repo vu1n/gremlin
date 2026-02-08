@@ -294,7 +294,7 @@ function generateScrollAction(data?: Record<string, unknown>): string {
 
 function generateNavigationAction(data?: Record<string, unknown>): string {
   if (typeof data?.url === 'string') {
-    return `await page.goto('${data.url}');`;
+    return `await page.goto('${escapeString(data.url)}');`;
   }
   return `// Navigation to ${data?.screen || 'unknown'}`;
 }
@@ -544,6 +544,7 @@ function escapeString(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
+    .replace(/`/g, '\\`')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r');
 }

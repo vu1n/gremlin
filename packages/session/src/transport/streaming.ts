@@ -329,18 +329,17 @@ export class StreamingTransport {
       const existing = localStorage.getItem(key);
       const data = existing ? JSON.parse(existing) : { events: [], rrwebEvents: [] };
 
-      // Cap stored events to prevent unbounded localStorage growth
-      const MAX_STORED_EVENTS = 500;
-      if (data.events.length >= MAX_STORED_EVENTS) {
-        // Keep the most recent half
-        data.events = data.events.slice(-Math.floor(MAX_STORED_EVENTS / 2));
-      }
-      if (data.rrwebEvents.length >= MAX_STORED_EVENTS) {
-        data.rrwebEvents = data.rrwebEvents.slice(-Math.floor(MAX_STORED_EVENTS / 2));
-      }
-
       data.events.push(...payload.events);
       data.rrwebEvents.push(...payload.rrwebEvents);
+
+      // Cap stored events to prevent unbounded localStorage growth (after append)
+      const MAX_STORED_EVENTS = 500;
+      if (data.events.length > MAX_STORED_EVENTS) {
+        data.events = data.events.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+      }
+      if (data.rrwebEvents.length > MAX_STORED_EVENTS) {
+        data.rrwebEvents = data.rrwebEvents.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+      }
 
       localStorage.setItem(key, JSON.stringify(data));
     } catch (e) {

@@ -227,10 +227,16 @@ export abstract class BaseRecorder {
   protected getOrCreateElement(info: Partial<ElementInfo>): number {
     if (!this.session) return -1;
 
-    const key = info.testId || info.accessibilityLabel || info.text || `_unknown_${this.unknownElementCounter++}`;
+    const hasIdentifier = !!(info.testId || info.accessibilityLabel || info.text);
+    const key = info.testId || info.accessibilityLabel || info.text || `_unknown_${this.unknownElementCounter}`;
 
     if (this.elementMap.has(key)) {
       return this.elementMap.get(key)!;
+    }
+
+    // Only increment counter after confirming this is a genuinely new unknown element
+    if (!hasIdentifier) {
+      this.unknownElementCounter++;
     }
 
     const element: ElementInfo = {
@@ -414,8 +420,8 @@ export abstract class BaseRecorder {
   /**
    * Get number of taps before reaching a specific screen.
    */
-  getTapsToScreen(screenName: string): number {
-    if (!this.session) return 0;
+  getTapsToScreen(screenName: string): number | null {
+    if (!this.session) return null;
 
     let taps = 0;
     for (const event of this.session.events) {
@@ -429,7 +435,7 @@ export abstract class BaseRecorder {
         }
       }
     }
-    return taps;
+    return null;
   }
 
   /**

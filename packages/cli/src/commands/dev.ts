@@ -261,10 +261,17 @@ export async function dev(options: DevOptions): Promise<void> {
               session = JSON.parse(content);
             } else {
               session = {
-                header: { sessionId, startTime: Date.now() },
+                header: {
+                  sessionId,
+                  startTime: Date.now(),
+                  device: { platform: 'web' },
+                  app: { name: 'unknown' },
+                  schemaVersion: 1,
+                },
                 events: [],
                 elements: [],
                 screenshots: [],
+                rrwebEvents: [],
               } as unknown as GremlinSession;
             }
 
