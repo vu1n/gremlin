@@ -33,7 +33,7 @@ const AppInfoSchema = z.object({
 });
 
 const SessionHeaderSchema = z.object({
-  sessionId: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/),
+  sessionId: z.string().min(1).max(200),
   startTime: z.number().int().positive(),
   endTime: z.number().int().positive().optional(),
   device: DeviceInfoSchema,
@@ -46,9 +46,10 @@ const SessionHeaderSchema = z.object({
 // ============================================================================
 
 const GremlinEventSchema = z.object({
-  dt: z.number().nonnegative().max(60000), // Max 1 minute between events
-  data: z.any().optional(), // Allow any structure for extensibility
-  timestamp: z.number().int().optional(),
+  dt: z.number().nonnegative(), // No max — long pauses are legitimate
+  type: z.number().int().nonnegative().optional(),
+  data: z.any().optional(),
+  perf: z.any().optional(),
 });
 
 // ============================================================================
@@ -56,12 +57,15 @@ const GremlinEventSchema = z.object({
 // ============================================================================
 
 const ElementInfoSchema = z.object({
-  id: z.string().max(100).optional(),
-  testId: z.string().max(100).optional(),
-  text: z.string().max(500).optional(),
-  className: z.string().max(200).optional(),
-  tagName: z.string().max(50).optional(),
-  attributes: z.record(z.string().max(100), z.any()).optional(),
+  testId: z.string().max(200).optional(),
+  accessibilityLabel: z.string().max(500).optional(),
+  text: z.string().max(1000).optional(),
+  type: z.string().max(50),
+  bounds: z.object({
+    x: z.number(), y: z.number(), width: z.number(), height: z.number(),
+  }).optional(),
+  cssSelector: z.string().max(500).optional(),
+  attributes: z.record(z.string(), z.any()).optional(),
 });
 
 // ============================================================================
@@ -69,9 +73,16 @@ const ElementInfoSchema = z.object({
 // ============================================================================
 
 const ScreenshotSchema = z.object({
+  id: z.string().max(200),
   timestamp: z.number().int().positive(),
   format: z.enum(['png', 'jpeg', 'webp']),
   data: z.string().max(10 * 1024 * 1024), // Base64, max 10MB
+  isUrl: z.boolean(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  quality: z.number().int().min(0).max(100),
+  isDiff: z.boolean(),
+  diffFromId: z.string().max(200).optional(),
 });
 
 // ============================================================================
@@ -129,9 +140,9 @@ export const GremlinSessionSchema: z.ZodType<{
 // ============================================================================
 
 export const SessionAppendSchema = z.object({
-  sessionId: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/),
-  events: z.array(GremlinEventSchema).max(10000).optional(), // Per batch limit
-  rrwebEvents: z.array(z.any()).max(10000).optional(), // Per batch limit
+  sessionId: z.string().min(1).max(200),
+  events: z.array(GremlinEventSchema).max(10000).optional(),
+  rrwebEvents: z.array(z.any()).max(100000).optional(),
 });
 
 // ============================================================================

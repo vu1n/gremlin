@@ -118,8 +118,12 @@ export async function dev(options: DevOptions): Promise<void> {
     async fetch(req) {
       const url = new URL(req.url);
 
-      // Build CORS headers based on request origin (prevents CSRF)
-      const corsHeaders = buildCorsHeaders(req);
+      // CORS headers for SDK — allow all origins (this is a local dev server)
+      const corsHeaders: Record<string, string> = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      };
 
       // Handle CORS preflight
       if (req.method === 'OPTIONS') {
@@ -136,7 +140,7 @@ export async function dev(options: DevOptions): Promise<void> {
             sessions: sessionCount,
           }),
           {
-            headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         );
       }
@@ -149,7 +153,7 @@ export async function dev(options: DevOptions): Promise<void> {
             ...metrics,
           }),
           {
-            headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         );
       }
@@ -164,7 +168,7 @@ export async function dev(options: DevOptions): Promise<void> {
               JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }),
               {
                 status: 415,
-                headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               }
             );
           }
@@ -179,7 +183,7 @@ export async function dev(options: DevOptions): Promise<void> {
               JSON.stringify({ error: 'Invalid session: missing sessionId' }),
               {
                 status: 400,
-                headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               }
             );
           }
@@ -224,7 +228,7 @@ export async function dev(options: DevOptions): Promise<void> {
               saved: sessionFile,
             }),
             {
-              headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           );
         } catch (err) {
@@ -239,7 +243,7 @@ export async function dev(options: DevOptions): Promise<void> {
             JSON.stringify({ error: errorMessage }),
             {
               status: err instanceof Error && err.name === 'ZodError' ? 400 : 500,
-              headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           );
         }
@@ -255,7 +259,7 @@ export async function dev(options: DevOptions): Promise<void> {
               JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }),
               {
                 status: 415,
-                headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               }
             );
           }
@@ -322,7 +326,7 @@ export async function dev(options: DevOptions): Promise<void> {
           return new Response(
             JSON.stringify({ status: 'ok', sessionId }),
             {
-              headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           );
         } catch (err) {
@@ -331,7 +335,7 @@ export async function dev(options: DevOptions): Promise<void> {
             JSON.stringify({ error: 'Failed to append to session' }),
             {
               status: 500,
-              headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           );
         }
@@ -364,11 +368,11 @@ export async function dev(options: DevOptions): Promise<void> {
           );
 
           return new Response(JSON.stringify({ sessions, total: files.length, limit, offset }), {
-            headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         } catch (err) {
           return new Response(JSON.stringify({ sessions: [], total: 0 }), {
-            headers: { ...corsHeaders, ...buildSecurityHeaders(), 'Content-Type': 'application/json' },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
       }
@@ -407,75 +411,6 @@ function getLocalIP(): string | null {
     }
   }
   return null;
-}
-
-/**
- * Validate and build CORS headers for the request origin
- * Restricts CORS to localhost and local network to prevent CSRF attacks
- */
-function buildCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('Origin');
-  const localIP = getLocalIP();
-
-  // Allowlist of safe origins for development
-  const allowedOrigins = [
-    'http://localhost:*',
-    'http://127.0.0.1:*',
-    'http://0.0.0.0:*',
-    'null', // For local file:// access
-  ];
-
-  // Add local network IP if available
-  if (localIP) {
-    allowedOrigins.push(`http://${localIP}:*`);
-  }
-
-  // Check if origin matches allowed pattern
-  let isAllowed = false;
-  if (origin) {
-    for (const allowed of allowedOrigins) {
-      // Convert wildcard pattern to regex
-      const pattern = allowed.replace('*', '.*');
-      const regex = new RegExp(`^${pattern}$`);
-      if (regex.test(origin)) {
-        isAllowed = true;
-        break;
-      }
-    }
-  } else {
-    // No Origin header (e.g., same-origin or curl)
-    isAllowed = true;
-  }
-
-  const headers: Record<string, string> = {
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
-  // Only set Access-Control-Allow-Origin if origin is allowed
-  if (isAllowed && origin) {
-    headers['Access-Control-Allow-Origin'] = origin;
-    headers['Vary'] = 'Origin';
-  } else if (isAllowed) {
-    // No origin header, allow all
-    headers['Access-Control-Allow-Origin'] = '*';
-  }
-
-  return headers;
-}
-
-/**
- * Build security headers to prevent various web vulnerabilities
- */
-function buildSecurityHeaders(): Record<string, string> {
-  return {
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-    'X-XSS-Protection': '1; mode=block',
-    'Strict-Transport-Security': 'max-age=31536000',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';",
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-  };
 }
 
 function extractAnalytics(session: GremlinSession): SessionAnalytics {
