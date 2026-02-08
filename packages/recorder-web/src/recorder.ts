@@ -131,7 +131,6 @@ export class GremlinRecorder extends BaseRecorder {
   };
 
   private stopRrweb: (() => void) | null = null;
-  private performanceTimer: number | null = null;
   private navigationStartTime = 0;
   private performanceMonitor: WebPerformanceMonitor | null = null;
   private originalPushState: typeof history.pushState | null = null;
@@ -312,12 +311,6 @@ export class GremlinRecorder extends BaseRecorder {
       this.stopRrweb = null;
     }
 
-    // Stop performance sampling
-    if (this.performanceTimer !== null) {
-      clearInterval(this.performanceTimer);
-      this.performanceTimer = null;
-    }
-
     // Stop performance monitor
     if (this.performanceMonitor) {
       this.performanceMonitor.stop();
@@ -397,10 +390,6 @@ export class GremlinRecorder extends BaseRecorder {
     if (this.stopRrweb) {
       this.stopRrweb();
       this.stopRrweb = null;
-    }
-    if (this.performanceTimer !== null) {
-      clearInterval(this.performanceTimer);
-      this.performanceTimer = null;
     }
     if (this.performanceMonitor) {
       this.performanceMonitor.stop();
@@ -963,11 +952,6 @@ export class GremlinRecorder extends BaseRecorder {
       trackMemory: true,
     });
     this.performanceMonitor.start();
-
-    // Keep the timer for backward compatibility (config.performanceInterval)
-    this.performanceTimer = window.setInterval(() => {
-      // Per-event perf is auto-attached in addEventToSession
-    }, this.webConfig.performanceInterval);
   }
 
   // ========================================================================

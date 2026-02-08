@@ -12,6 +12,7 @@
     "keygen": "bun run src/keygen.ts"
   },
   "dependencies": {
+    "@gremlin/server-shared": "workspace:*",
     "@gremlin/session": "workspace:*",
     "hono": "^4.0.0"
   },

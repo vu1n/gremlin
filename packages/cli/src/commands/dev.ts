@@ -337,7 +337,7 @@ function extractAnalytics(session: GremlinSession): SessionAnalytics {
   const events = session.events || [];
   const duration =
     events.length > 0
-      ? Math.max(...events.map((e) => e.dt || 0))
+      ? events.reduce((sum, e) => sum + (e.dt || 0), 0)
       : 0;
 
   const screens = new Set<string>();
@@ -367,7 +367,7 @@ function extractAnalytics(session: GremlinSession): SessionAnalytics {
 function logSession(session: GremlinSession, count: number, verbose: boolean): void {
   const events = session.events || [];
   const rrwebEvents = session.rrwebEvents || [];
-  const duration = events.length > 0 ? Math.max(...events.map((e) => e.dt || 0)) / 1000 : 0;
+  const duration = events.length > 0 ? events.reduce((sum, e) => sum + (e.dt || 0), 0) / 1000 : 0;
 
   const app = session.header.app?.name || 'unknown';
   const platform = session.header.device?.platform || 'unknown';

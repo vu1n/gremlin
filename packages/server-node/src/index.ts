@@ -483,18 +483,16 @@ async function getMetrics(config: ServerConfig): Promise<{
   };
 }
 
-const config = getConfig();
-ensureDataLayout(config);
+if (import.meta.main) {
+  const config = getConfig();
+  ensureDataLayout(config);
 
-const app = createApp(config);
+  const app = createApp(config);
 
-export { app };
+  console.log(`Gremlin self-hosted server listening on :${config.port}`);
 
-const port = config.port;
-
-console.log(`Gremlin self-hosted server listening on :${port}`);
-
-Bun.serve({
-  port,
-  fetch: app.fetch,
-});
+  Bun.serve({
+    port: config.port,
+    fetch: app.fetch,
+  });
+}

@@ -33,17 +33,19 @@ const app = new Hono<{ Bindings: Env }>();
 // Middleware
 // ============================================================================
 
-// CORS for browser uploads
-app.use(
-  '*',
-  cors({
-    origin: '*', // Configure this based on your needs
+// CORS for browser uploads — reads ALLOWED_ORIGINS env var
+app.use('*', async (c, next) => {
+  const raw = c.env.ALLOWED_ORIGINS ?? '*';
+  const origin = raw === '*' ? '*' : raw.split(',').map((o) => o.trim()).filter(Boolean);
+  const handler = cors({
+    origin,
     allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-API-Key'],
     exposeHeaders: ['Content-Length'],
     maxAge: 86400,
-  })
-);
+  });
+  return handler(c, next);
+});
 
 // Compression
 app.use('*', compress());

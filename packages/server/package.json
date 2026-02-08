@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@gremlin/server-shared": "workspace:*",
     "@gremlin/session": "workspace:*",
     "@gremlin/proto": "workspace:*",
     "hono": "^4.0.0"
