@@ -101,8 +101,7 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   protected getDeviceInfo(): DeviceInfo {
-    const { width, height } = Dimensions.get('window');
-    const scale = Dimensions.get('window').scale;
+    const { width, height, scale } = Dimensions.get('window');
 
     return {
       platform: Platform.OS as 'ios' | 'android',

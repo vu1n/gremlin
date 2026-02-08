@@ -112,6 +112,8 @@ export class StreamingTransport {
       console.log(`[StreamingTransport] Stopped for session ${this.sessionId}`);
     }
 
+    // Reset flushing so a subsequent start() isn't blocked by in-flight flush
+    this.flushing = false;
     this.sessionId = null;
   }
 
@@ -191,6 +193,7 @@ export class StreamingTransport {
   flushBeacon(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
+    if (this.flushing) return; // Prevent race with in-flight flush()
 
     // Snapshot and swap (same pattern as flush) to avoid races
     const events = this.pendingEvents;
@@ -326,12 +329,24 @@ export class StreamingTransport {
       const existing = localStorage.getItem(key);
       const data = existing ? JSON.parse(existing) : { events: [], rrwebEvents: [] };
 
+      // Cap stored events to prevent unbounded localStorage growth
+      const MAX_STORED_EVENTS = 500;
+      if (data.events.length >= MAX_STORED_EVENTS) {
+        // Keep the most recent half
+        data.events = data.events.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+      }
+      if (data.rrwebEvents.length >= MAX_STORED_EVENTS) {
+        data.rrwebEvents = data.rrwebEvents.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+      }
+
       data.events.push(...payload.events);
       data.rrwebEvents.push(...payload.rrwebEvents);
 
       localStorage.setItem(key, JSON.stringify(data));
-    } catch {
-      // Storage full or unavailable
+    } catch (e) {
+      if (this.config.debug) {
+        console.warn('[StreamingTransport] localStorage write failed', e);
+      }
     }
   }
 

@@ -84,7 +84,7 @@ export function validateSession(data: unknown): ValidationResult {
       errors.push('Missing or invalid header.sessionId');
     }
 
-    if (!header.startTime || typeof header.startTime !== 'number') {
+    if (header.startTime == null || typeof header.startTime !== 'number') {
       errors.push('Missing or invalid header.startTime');
     }
 
@@ -96,7 +96,7 @@ export function validateSession(data: unknown): ValidationResult {
       errors.push('Missing or invalid header.app');
     }
 
-    if (!header.schemaVersion || typeof header.schemaVersion !== 'number') {
+    if (header.schemaVersion == null || typeof header.schemaVersion !== 'number') {
       errors.push('Missing or invalid header.schemaVersion');
     }
   }

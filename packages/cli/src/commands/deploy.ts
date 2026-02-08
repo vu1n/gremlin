@@ -256,7 +256,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   console.log('');
   console.log(`  Status:       ${healthy ? 'Running' : 'Starting...'}`);
   console.log(`  URL:          ${url}`);
-  console.log(`  API Key:      ${apiKey}`);
+  console.log(`  API Key:      ${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`);
   console.log(`  Data Dir:     ${dataDir}`);
   if (containerId) {
     console.log(`  Container:    ${containerId.slice(0, 12)}`);
@@ -271,7 +271,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   console.log('');
   console.log('  Configure your SDK:');
   console.log(`    serverUrl: "${url}"`);
-  console.log(`    apiKey:    "${apiKey}"`);
+  console.log(`    apiKey:    "${apiKey.slice(0, 4)}...${apiKey.slice(-4)}"`);
   console.log('');
 
   return result;

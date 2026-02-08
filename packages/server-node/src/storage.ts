@@ -138,8 +138,8 @@ export async function deleteSession(
     return false;
   }
 
-  await rm(sessionPath, { force: true });
-
+  // Update index first, then delete file — if delete fails, stale index entry
+  // is less harmful than an orphaned index entry pointing to a missing file
   await withIndexLock(async () => {
     const index = await loadIndex(config);
     if (index[id]) {
@@ -147,6 +147,8 @@ export async function deleteSession(
       await saveIndex(config, index);
     }
   });
+
+  await rm(sessionPath, { force: true });
 
   return true;
 }

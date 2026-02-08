@@ -246,22 +246,27 @@ export class WebPerformanceMonitor {
       const webVitals = await import('web-vitals');
 
       webVitals.onLCP((metric) => {
+        if (!this.isRunning) return;
         this.webVitals.lcp = Math.round(metric.value);
       });
 
       webVitals.onCLS((metric) => {
+        if (!this.isRunning) return;
         this.webVitals.cls = Math.round(metric.value * 1000) / 1000;
       }, { reportAllChanges: true });
 
       webVitals.onINP((metric) => {
+        if (!this.isRunning) return;
         this.webVitals.inp = Math.round(metric.value);
       }, { reportAllChanges: true });
 
       webVitals.onFCP((metric) => {
+        if (!this.isRunning) return;
         this.webVitals.fcp = Math.round(metric.value);
       });
 
       webVitals.onTTFB((metric) => {
+        if (!this.isRunning) return;
         this.webVitals.ttfb = Math.round(metric.value);
       });
     } catch {

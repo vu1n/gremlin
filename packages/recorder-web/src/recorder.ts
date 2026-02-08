@@ -152,6 +152,8 @@ export class GremlinRecorder extends BaseRecorder {
   private streamingTransport: StreamingTransport | null = null;
   private scrollPositions = new WeakMap<EventTarget, { x: number; y: number }>();
   private documentScrollPos = { x: 0, y: 0 };
+  private beforeUnloadHandler: (() => void) | null = null;
+  private autoStartLoadHandler: (() => void) | null = null;
 
   constructor(config: RecorderConfig) {
     super({
@@ -191,6 +193,8 @@ export class GremlinRecorder extends BaseRecorder {
     if (config.streaming) {
       const streamingConfig = typeof config.streaming === 'object' ? config.streaming : {};
       this.streamingTransport = new StreamingTransport({
+        // Inherit endpoint from transport config so streaming goes to the same server
+        endpoint: typeof transportConfig === 'object' ? (transportConfig as any).endpoint : undefined,
         debug: config.debug,
         ...streamingConfig,
       });
@@ -200,7 +204,8 @@ export class GremlinRecorder extends BaseRecorder {
       if (document.readyState === 'complete') {
         this.start();
       } else {
-        window.addEventListener('load', () => this.start());
+        this.autoStartLoadHandler = () => this.start();
+        window.addEventListener('load', this.autoStartLoadHandler);
       }
     }
 
@@ -303,11 +308,6 @@ export class GremlinRecorder extends BaseRecorder {
     // Capture session-level performance before stopping the monitor
     let sessionPerformance = this.performanceMonitor?.getSessionPerformance();
 
-    // Stop streaming transport (flushes pending events)
-    if (this.streamingTransport) {
-      this.streamingTransport.stop();
-    }
-
     // Stop rrweb
     if (this.stopRrweb) {
       this.stopRrweb();
@@ -326,7 +326,13 @@ export class GremlinRecorder extends BaseRecorder {
     // Restore history API
     this.restoreHistoryApi();
 
+    // BaseRecorder flushes batcher — flushed events get pushed to streaming transport
     const session = super.stop();
+
+    // Stop streaming AFTER super.stop() so batcher-flushed events are included
+    if (this.streamingTransport) {
+      this.streamingTransport.stop();
+    }
 
     if (session) {
       // Add session-level performance data
@@ -368,10 +374,10 @@ export class GremlinRecorder extends BaseRecorder {
       return false;
     }
 
-    // Add rrweb events to session
+    // Prefer rrweb snapshot from stop() over live array (which may have been cleared/grown)
     const fullSession = {
       ...sessionToUpload,
-      rrwebEvents: this.rrwebEvents,
+      rrwebEvents: (sessionToUpload as any).rrwebEvents || [...this.rrwebEvents],
     };
 
     try {
@@ -401,6 +407,14 @@ export class GremlinRecorder extends BaseRecorder {
     if (this.streamingTransport) {
       this.streamingTransport.stop();
       this.streamingTransport = null;
+    }
+    if (this.beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+      this.beforeUnloadHandler = null;
+    }
+    if (this.autoStartLoadHandler) {
+      window.removeEventListener('load', this.autoStartLoadHandler);
+      this.autoStartLoadHandler = null;
     }
     this.removeEventListeners();
     this.restoreHistoryApi();
@@ -985,12 +999,13 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   private setupPersistence(): void {
-    window.addEventListener('beforeunload', () => {
+    this.beforeUnloadHandler = () => {
       if (this.isRecording()) {
         this.flush();
         this.saveToStorage();
       }
-    });
+    };
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
   }
 
   private saveToStorage(): void {
