@@ -765,10 +765,45 @@ function parseEvent(eventStr: string): TransitionEvent {
 }
 
 function parseGuard(guardStr: string): Predicate {
-  // For now, store as a description - could parse to formal predicate later
+  const lower = guardStr.toLowerCase().trim();
+
+  // Pattern: "element X is visible" / "X is visible" / "X visible"
+  const visibleMatch = lower.match(/(?:element\s+)?['""]?(.+?)['""]?\s+(?:is\s+)?visible/);
+  if (visibleMatch) {
+    return { type: 'element_visible', element: { testId: visibleMatch[1].trim() } };
+  }
+
+  // Pattern: "element X exists" / "X exists"
+  const existsMatch = lower.match(/(?:element\s+)?['""]?(.+?)['""]?\s+exists/);
+  if (existsMatch) {
+    return { type: 'element_exists', element: { testId: existsMatch[1].trim() } };
+  }
+
+  // Pattern: "variable == value" / "variable != value" / "variable > value"
+  const compMatch = guardStr.match(/^(.+?)\s*(==|!=|>=|<=|>|<|contains)\s*(.+)$/);
+  if (compMatch) {
+    const [, leftStr, op, rightStr] = compMatch;
+    return {
+      type: 'comparison',
+      left: { type: 'variable', name: leftStr.trim() },
+      op: op as any,
+      right: { type: 'literal', value: rightStr.trim() },
+    };
+  }
+
+  // Pattern: "not X" / "!X"
+  const notMatch = lower.match(/^(?:not\s+|!)(.+)$/);
+  if (notMatch) {
+    return { type: 'not', operand: parseGuard(notMatch[1]) };
+  }
+
+  // Fallback: store as a comparison with the description so it appears as a
+  // comment in generated code rather than being silently dropped
   return {
-    type: 'literal',
-    value: true,
+    type: 'comparison',
+    left: { type: 'variable', name: 'guard' },
+    op: '==',
+    right: { type: 'literal', value: guardStr },
   };
 }
 

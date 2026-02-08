@@ -168,7 +168,7 @@ export function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
   for (let i = 0; i < sessions.length; i++) {
     const session = sessions[i];
     const events = session.events || [];
-    const duration = events.length > 0 ? Math.max(...events.map((e) => e.dt || 0)) / 1000 : 0;
+    const duration = events.length > 0 ? events.reduce((sum, e) => sum + (e.dt || 0), 0) / 1000 : 0;
 
     lines.push(`### Session ${i + 1}`);
     lines.push(`- Platform: ${session.header.device?.platform || 'unknown'}`);

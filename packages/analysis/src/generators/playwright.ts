@@ -306,8 +306,7 @@ function generateTransitionTest(
 
   // Navigate to starting state if not initial
   if (transition.from !== spec.initialState) {
-    lines.push(`    // TODO: Navigate to ${fromState?.name || transition.from} state`);
-    lines.push(`    // This may require executing prerequisite transitions`);
+    lines.push(`    await navigateToState(page, '${escapeString(fromState?.name || transition.from)}');`);
     lines.push('');
   }
 
@@ -539,28 +538,100 @@ function generateHelperFunctions(spec: GremlinSpec): string {
   lines.push(`// ============================================================================`);
   lines.push('');
 
-  // State navigation helpers
+  // Build a navigation map: for each state, the shortest sequence of actions to reach it
   lines.push(`/**`);
-  lines.push(` * Navigate to a specific state (may require multiple transitions)`);
+  lines.push(` * Navigate to a specific state by executing the shortest path from the initial state.`);
   lines.push(` */`);
   lines.push(`async function navigateToState(page: any, targetState: string): Promise<void> {`);
-  lines.push(`  // TODO: Implement state navigation logic`);
-  lines.push(`  // This should find the shortest path from current state to target`);
-  lines.push(`  console.log('Navigating to state:', targetState);`);
+  lines.push(`  const paths: Record<string, Array<() => Promise<void>>> = {`);
+
+  // BFS from initial state to find shortest path to every reachable state
+  const pathMap = computeShortestPaths(spec);
+
+  for (const [stateId, path] of Object.entries(pathMap)) {
+    const state = spec.states.find((s) => s.id === stateId);
+    const stateName = state?.name || stateId;
+    if (path.length === 0) continue; // Skip initial state
+
+    const steps = path.map((t) => {
+      const actionCode = generateEventAction(t.event);
+      return `      async () => { ${actionCode} }`;
+    });
+
+    lines.push(`    '${escapeString(stateName)}': [`);
+    for (const step of steps) {
+      lines.push(`${step},`);
+    }
+    lines.push(`    ],`);
+  }
+
+  lines.push(`  };`);
+  lines.push('');
+  lines.push(`  const steps = paths[targetState];`);
+  lines.push(`  if (!steps) {`);
+  lines.push(`    throw new Error(\`No known path to state: \${targetState}\`);`);
+  lines.push(`  }`);
+  lines.push(`  for (const step of steps) {`);
+  lines.push(`    await step();`);
+  lines.push(`  }`);
   lines.push(`}`);
   lines.push('');
 
-  // Wait for state helpers
+  // Wait for state helper — uses the same state detection logic as generateStateAssertion
   lines.push(`/**`);
-  lines.push(` * Wait for the app to reach a specific state`);
+  lines.push(` * Wait for the app to reach a specific state by checking its identifying element or URL.`);
   lines.push(` */`);
   lines.push(`async function waitForState(page: any, state: string, timeout = 10000): Promise<void> {`);
-  lines.push(`  // TODO: Implement state detection logic`);
-  lines.push(`  await page.waitForTimeout(1000);`);
+  lines.push(`  const detectors: Record<string, () => Promise<void>> = {`);
+
+  for (const state of spec.states) {
+    const assertion = generateStateAssertion(state);
+    if (assertion) {
+      lines.push(`    '${escapeString(state.name)}': async () => { ${assertion} },`);
+    }
+  }
+
+  lines.push(`  };`);
+  lines.push('');
+  lines.push(`  const detect = detectors[state];`);
+  lines.push(`  if (detect) {`);
+  lines.push(`    await detect();`);
+  lines.push(`  } else {`);
+  lines.push(`    await page.waitForLoadState('networkidle');`);
+  lines.push(`  }`);
   lines.push(`}`);
   lines.push('');
 
   return lines.join('\n');
+}
+
+/**
+ * BFS from the initial state to compute shortest transition paths to all reachable states.
+ */
+function computeShortestPaths(spec: GremlinSpec): Record<string, Transition[]> {
+  const result: Record<string, Transition[]> = {};
+  result[spec.initialState] = [];
+
+  const queue: Array<{ stateId: StateId; path: Transition[] }> = [
+    { stateId: spec.initialState, path: [] },
+  ];
+  const visited = new Set<string>([spec.initialState]);
+
+  while (queue.length > 0) {
+    const { stateId, path } = queue.shift()!;
+
+    const outgoing = spec.transitions.filter((t) => t.from === stateId);
+    for (const transition of outgoing) {
+      if (!visited.has(transition.to)) {
+        visited.add(transition.to);
+        const newPath = [...path, transition];
+        result[transition.to] = newPath;
+        queue.push({ stateId: transition.to, path: newPath });
+      }
+    }
+  }
+
+  return result;
 }
 
 // ============================================================================
