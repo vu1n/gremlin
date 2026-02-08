@@ -64,30 +64,130 @@ Gremlin ships a local-first workflow plus two server options:
 
 ## Quick Start
 
-### Installation
+Get started with three commands. Gremlin auto-detects your framework, instruments your app, and generates tests from real user sessions.
 
 ```bash
-# Install CLI globally
+# Install
 bun add -g @gremlin/cli
 
-# Or use in project
-bun add -D @gremlin/cli
+# Initialize (auto-instruments your app)
+gremlin init
+
+# Start recording sessions
+gremlin dev          # Terminal 1
+bun run dev          # Terminal 2 - your app
 ```
 
-### 1. Setup Recording (Web)
+Use your app for a few minutes. Gremlin captures clicks, navigation, inputs, and errors automatically.
 
-Install the web recorder in your application:
+```bash
+# Generate tests from your sessions
+gremlin generate
+
+# Run the tests
+gremlin run
+```
+
+That's it. You now have Playwright tests based on real user behavior.
+
+---
+
+### What Just Happened?
+
+1. **`gremlin init`** detected your framework (Next.js, Vite, Remix, etc.), installed the SDK, and auto-instrumented your app's entry point
+2. **`gremlin dev`** started a local server that receives sessions from your app
+3. As you used your app, sessions were recorded to `.gremlin/sessions/`
+4. **`gremlin generate`** analyzed those sessions with AI and generated executable tests
+5. **`gremlin run`** executed the generated tests
+
+---
+
+## Framework Support
+
+Gremlin auto-detects and instruments:
+
+- **Web**: Next.js, Vite, Create React App, Remix
+- **Mobile**: Expo, React Native
+
+---
+
+## Generate Tests
+
+```bash
+gremlin generate
+```
+
+This analyzes your sessions using AI and generates:
+- Playwright tests for web apps
+- Maestro flows for mobile apps
+- A state machine model (`spec.json`) of your app
+
+**Requires an AI provider API key:**
+```bash
+export ANTHROPIC_API_KEY=sk-ant-xxx  # Recommended
+# or
+export OPENAI_API_KEY=sk-xxx
+# or
+export GEMINI_API_KEY=xxx
+```
+
+---
+
+## Generate Fuzz Tests
+
+Find edge cases with chaos testing:
+
+```bash
+gremlin fuzz --strategy all --count 20
+```
+
+Strategies: random-walk, boundary abuse, sequence mutation, back-button chaos.
+
+---
+
+## Import Existing Sessions
+
+Already using session recording? Import from PostHog or rrweb files:
+
+```bash
+# Import from PostHog
+gremlin import --posthog --api-key=phx_xxx --project-id=123 --limit=5
+
+# Import rrweb JSON file
+gremlin import --file ./recording.json
+
+# Then generate tests
+gremlin generate
+```
+
+---
+
+## Run Tests
+
+```bash
+# All tests
+gremlin run
+
+# Specific framework
+npx playwright test .gremlin/tests/playwright
+maestro test .gremlin/tests/maestro
+```
+
+---
+
+## Manual SDK Setup
+
+If you need fine-grained control or auto-instrumentation didn't work, you can manually integrate the SDK.
+
+### Web Apps
 
 ```bash
 bun add @gremlin/recorder-web
 ```
 
-Add to your app:
-
 ```typescript
 import { GremlinRecorder } from '@gremlin/recorder-web';
 
-// Initialize recorder
 const recorder = new GremlinRecorder({
   appName: 'my-app',
   appVersion: '1.0.0',
@@ -95,119 +195,38 @@ const recorder = new GremlinRecorder({
   capturePerformance: true,      // Capture memory/timing metrics
   maskInputs: true,              // Mask passwords/emails
   persistSession: true,          // Continue recording across page loads
-  enableBatching: true,          // Optimize scroll event batching
-  scrollBatchWindow: 150,        // Coalesce scrolls within 150ms
 });
 
-// Export session when done
-const session = recorder.stop();
-if (session) {
-  // Send to backend or download
-  fetch('/api/gremlin/sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(session),
-  });
-}
-
-// For multi-page apps, resume on page load
-if (recorder.hasPersistentSession()) {
-  recorder.resume();
-}
+recorder.start();
 ```
 
-### 2. Setup Recording (React Native)
+### React Native
 
 ```bash
 bun add @gremlin/recorder-react-native
 ```
 
-Add to your app:
-
 ```typescript
-import { GremlinRecorder, LocalTransport } from '@gremlin/recorder-react-native';
+import { GremlinRecorder } from '@gremlin/recorder-react-native';
 
-// Initialize recorder with auto-upload
 const recorder = new GremlinRecorder({
   appName: 'my-app',
   appVersion: '1.0.0',
   capturePerformance: true,
-  transport: new LocalTransport({
-    endpoint: 'http://localhost:3334/sessions', // gremlin dev server
-  }),
 });
 
-// Start recording
 recorder.start();
-
-// The recorder automatically captures:
-// - Touch gestures (tap, swipe, long press)
-// - Text inputs
-// - Scroll events
-// - Navigation (React Navigation)
-// - Performance metrics (FPS, memory)
-// - Errors
-
-// Stop and upload session
-const session = recorder.stop();
 ```
 
-### 3. Generate Tests
+### Disable Auto-Instrumentation
+
+If you prefer manual setup:
 
 ```bash
-# Initialize Gremlin in your project
-gremlin init
-
-# Place session JSON files in .gremlin/sessions/
-# Then generate tests
-gremlin generate
-
-# Or with specific options
-gremlin generate \
-  --input .gremlin/sessions \
-  --output .gremlin/tests \
-  --playwright \
-  --base-url http://localhost:3000 \
-  --provider anthropic
+gremlin init --no-instrument
 ```
 
-**What this does:**
-- Analyzes all sessions using AI to extract application behavior
-- Creates a state machine model (`spec.json`)
-- Generates executable Playwright tests in `.gremlin/tests/playwright/`
-
-**Environment Variables:**
-Set one of these API keys for AI analysis:
-- `ANTHROPIC_API_KEY` - For Claude (recommended)
-- `OPENAI_API_KEY` - For GPT models
-- `GEMINI_API_KEY` - For Google Gemini
-
-### 4. Generate Fuzz Tests
-
-```bash
-# Generate chaos tests to find bugs
-gremlin fuzz \
-  --spec .gremlin/tests/spec.json \
-  --strategy all \
-  --count 20
-
-# Or target specific strategies
-gremlin fuzz \
-  --strategy random-walk,boundary \
-  --count 10 \
-  --seed 12345
-```
-
-### 5. Run Tests
-
-```bash
-# Run all generated tests via Gremlin CLI
-gremlin run
-
-# Or run specific frameworks directly
-npx playwright test .gremlin/tests/playwright
-maestro test .gremlin/tests/maestro
-```
+---
 
 ## Self-Hosted Session API
 

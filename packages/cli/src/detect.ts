@@ -28,6 +28,7 @@ export interface FrameworkInfo {
   entryPoints: string[];
   entryPointHint: string;
   isNative: boolean;
+  devCommand: string;
 }
 
 // ============================================================================
@@ -88,6 +89,7 @@ export function getFrameworkInfo(framework: Framework): FrameworkInfo {
 
   const entryPoints = getEntryPoints(framework);
   const entryPointHint = getEntryPointHint(framework);
+  const devCommand = getDevCommand(framework);
 
   return {
     framework,
@@ -97,6 +99,7 @@ export function getFrameworkInfo(framework: Framework): FrameworkInfo {
     entryPoints,
     entryPointHint,
     isNative,
+    devCommand,
   };
 }
 
@@ -146,6 +149,25 @@ function getEntryPointHint(framework: Framework): string {
       return 'Look for App.tsx or index.js';
     default:
       return 'Find the main app entry point where React renders';
+  }
+}
+
+function getDevCommand(framework: Framework): string {
+  switch (framework) {
+    case 'nextjs':
+      return 'bun run dev';
+    case 'vite':
+      return 'bun run dev';
+    case 'cra':
+      return 'bun start';
+    case 'remix':
+      return 'bun run dev';
+    case 'expo':
+      return 'bun start';
+    case 'react-native':
+      return 'bun run start';
+    default:
+      return 'bun run dev';
   }
 }
 

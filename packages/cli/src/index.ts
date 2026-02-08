@@ -53,7 +53,7 @@ program
   .option('--app-name <name>', 'App name for recorder config')
   .option('--framework <name>', 'Force framework (nextjs, vite, cra, remix, expo, react-native)')
   .option('--skip-install', 'Skip SDK package installation')
-  .option('--instrument', 'Auto-instrument entry point')
+  .option('--no-instrument', 'Skip auto-instrumentation of entry point')
   .option('--server-url <url>', 'Configure remote server URL')
   .action(async (options) => {
     const json = program.opts().json;
@@ -61,7 +61,7 @@ program
       appName: options.appName,
       framework: options.framework,
       skipInstall: options.skipInstall,
-      instrument: options.instrument,
+      instrument: options.instrument !== false, // Default to true
       serverUrl: options.serverUrl,
       json,
     });

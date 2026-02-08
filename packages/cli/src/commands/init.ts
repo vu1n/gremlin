@@ -224,20 +224,26 @@ export async function init(options: InitOptions): Promise<InitResult> {
   // --- Human-readable next steps ---
   console.log('');
   console.log('Next steps:');
-  if (!options.instrument) {
+  if (!instrumented) {
     console.log('  1. Instrument your app:');
     console.log('     gremlin instrument    # Get AI-friendly instructions');
     console.log('');
     console.log('  2. Start the dev server:');
     console.log('     gremlin dev');
   } else {
-    console.log('  1. Start the dev server:');
+    console.log('  1. Start the Gremlin dev server:');
     console.log('     gremlin dev');
+    console.log('');
+    console.log('  2. In another terminal, start your app:');
+    console.log(`     ${info.devCommand || 'bun run dev'}`);
   }
   console.log('');
-  console.log('  Then use your app to record sessions, and run:');
+  console.log('  3. Use your app for a few minutes to record sessions');
+  console.log('');
+  console.log('  Then generate tests:');
   console.log('     gremlin sessions       # List recordings');
-  console.log('     gremlin generate       # Generate tests');
+  console.log('     gremlin generate       # Generate tests from sessions');
+  console.log('     gremlin run            # Run generated tests');
   console.log('');
 
   return result;
