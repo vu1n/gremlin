@@ -215,6 +215,8 @@ export class GremlinRecorder extends BaseRecorder {
           } else {
             console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
           }
+        }).catch((err) => {
+          console.warn('GremlinRecorder: Upload error', err);
         });
       }
     }
@@ -729,6 +731,9 @@ export class GremlinRecorder extends BaseRecorder {
   private handleGesture = async (gesture: GestureEvent): Promise<void> => {
     if (!this.isRecording()) return;
 
+    // Capture timestamp before async work so dt is accurate
+    const captureTime = Date.now();
+
     try {
       // Find interactive element if target is available
       let elementIndex: number | undefined;
@@ -739,6 +744,9 @@ export class GremlinRecorder extends BaseRecorder {
           elementIndex = this.getOrCreateElement(toElementInfo(elementInfo));
         }
       }
+
+      // Check again after await — recording may have stopped
+      if (!this.isRecording()) return;
 
       // Create event based on gesture type
       if (gesture.type === 'swipe') {

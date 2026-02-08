@@ -36,6 +36,11 @@ function countFiles(dir: string, extensions: string[]): number {
   }
 }
 
+/** Validate that an ID contains no path traversal characters */
+function isValidId(id: string): boolean {
+  return /^[a-zA-Z0-9_\-]+$/.test(id) && id.length > 0;
+}
+
 function textResult(data: unknown): { content: { type: 'text'; text: string }[] } {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -256,6 +261,9 @@ server.tool(
     sessionId: z.string().describe('Session ID to retrieve'),
   },
   async ({ sessionId }) => {
+    if (!isValidId(sessionId)) {
+      return errorResult('Invalid session ID');
+    }
     const sessionPath = gremlinPath('sessions', `${sessionId}.json`);
     const session = readJsonFile<GremlinSession>(sessionPath);
 
@@ -580,7 +588,13 @@ server.tool(
   },
   async ({ testsDir }) => {
     const args: string[] = ['run', '--all'];
-    if (testsDir) args.push('--tests-dir', testsDir);
+    if (testsDir) {
+      // Prevent path traversal outside the project
+      if (testsDir.includes('..') || testsDir.startsWith('/')) {
+        return errorResult('Invalid tests directory: must be a relative path without ".."');
+      }
+      args.push('--tests-dir', testsDir);
+    }
 
     const result = await runCliCommand(args);
 
@@ -752,6 +766,15 @@ server.resource(
   { description: 'Read a session by ID' },
   async (uri) => {
     const id = uri.pathname.split('/').filter(Boolean).pop() ?? '';
+    if (!isValidId(id)) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: 'application/json' as const,
+          text: JSON.stringify({ error: 'Invalid session ID' }),
+        }],
+      };
+    }
     const sessionPath = gremlinPath('sessions', `${id}.json`);
     const content = readJsonFile<unknown>(sessionPath);
 

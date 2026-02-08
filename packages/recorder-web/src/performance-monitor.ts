@@ -163,7 +163,7 @@ export class WebPerformanceMonitor {
     // Page load time from navigation timing
     try {
       const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-      if (nav) {
+      if (nav && nav.loadEventEnd > 0) {
         perf.pageLoadTime = Math.round(nav.loadEventEnd - nav.startTime);
       }
     } catch {

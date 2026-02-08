@@ -133,8 +133,8 @@ export class GremlinRecorder extends BaseRecorder {
   private stopRrweb: (() => void) | null = null;
   private navigationStartTime = 0;
   private performanceMonitor: WebPerformanceMonitor | null = null;
-  private originalPushState: typeof history.pushState | null = null;
-  private originalReplaceState: typeof history.replaceState | null = null;
+  private originalPushState: typeof history.pushState;
+  private originalReplaceState: typeof history.replaceState;
 
   /** Network interception */
   private originalFetch: typeof window.fetch | null = null;
@@ -162,6 +162,10 @@ export class GremlinRecorder extends BaseRecorder {
       scrollBatchWindow: config.scrollBatchWindow ?? 150,
       debug: config.debug ?? false,
     });
+
+    // Store original history methods once at construction time
+    this.originalPushState = history.pushState;
+    this.originalReplaceState = history.replaceState;
 
     // Determine if transport is enabled (default: 'local' in development)
     const transportEnabled = config.transport !== false;
@@ -733,29 +737,20 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   private interceptHistoryApi(): void {
-    this.originalPushState = history.pushState;
-    this.originalReplaceState = history.replaceState;
-
     history.pushState = (...args) => {
-      this.originalPushState!.apply(history, args);
+      this.originalPushState.apply(history, args);
       this.recordNavigationWithType('push');
     };
 
     history.replaceState = (...args) => {
-      this.originalReplaceState!.apply(history, args);
+      this.originalReplaceState.apply(history, args);
       this.recordNavigationWithType('replace');
     };
   }
 
   private restoreHistoryApi(): void {
-    if (this.originalPushState) {
-      history.pushState = this.originalPushState;
-      this.originalPushState = null;
-    }
-    if (this.originalReplaceState) {
-      history.replaceState = this.originalReplaceState;
-      this.originalReplaceState = null;
-    }
+    history.pushState = this.originalPushState;
+    history.replaceState = this.originalReplaceState;
   }
 
   // ========================================================================
@@ -1129,7 +1124,11 @@ export class GremlinRecorder extends BaseRecorder {
     }
 
     this.setupEventListeners();
+
+    // Save restored rrweb events before startRrwebRecording clears them
+    const savedRrwebEvents = [...this.rrwebEvents];
     this.startRrwebRecording();
+    this.rrwebEvents = [...savedRrwebEvents, ...this.rrwebEvents];
 
     if (this.webConfig.capturePerformance) {
       this.startPerformanceSampling();

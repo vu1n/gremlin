@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { output, outputError, type OutputOptions } from '../output.ts';
 
@@ -148,7 +148,7 @@ export async function deployLocal(options: DeployLocalOptions): Promise<DeployLo
 
   const pid = child.pid;
   if (pid) {
-    writeFileSync(PID_FILE, String(pid));
+    writeFileSync(PID_FILE, JSON.stringify({ pid, port }));
   }
 
   // Wait for health check: max 5 attempts, 500ms apart, 2s timeout each
@@ -212,7 +212,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   };
 
   try {
-    execSync(['docker', ...args].join(' '), {
+    execFileSync('docker', args, {
       env,
       stdio: detach ? 'pipe' : 'inherit',
     });
@@ -229,7 +229,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   let containerId: string | undefined;
   if (detach) {
     try {
-      containerId = execSync('docker compose ps -q gremlin-server', { encoding: 'utf-8' }).trim();
+      containerId = execFileSync('docker', ['compose', 'ps', '-q', 'gremlin-server'], { encoding: 'utf-8' }).trim();
     } catch {
       // Non-critical, continue without container ID
     }
@@ -286,11 +286,21 @@ export async function deployStatus(options: DeployStatusOptions): Promise<Deploy
   const local: DeployStatusResult['local'] = { running: false };
   if (existsSync(PID_FILE)) {
     try {
-      const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+      const pidFileContent = readFileSync(PID_FILE, 'utf-8').trim();
+      let pid: number;
+      let pidPort = 3334;
+      try {
+        const parsed = JSON.parse(pidFileContent);
+        pid = parsed.pid;
+        pidPort = parsed.port ?? 3334;
+      } catch {
+        // Legacy format: plain PID number
+        pid = parseInt(pidFileContent, 10);
+      }
       // Check if process is alive
       process.kill(pid, 0);
       local.pid = pid;
-      local.port = 3334;
+      local.port = pidPort;
       local.url = `http://localhost:${local.port}`;
       local.running = await healthCheck(`${local.url}/health`, 2000);
     } catch {
@@ -417,7 +427,13 @@ export async function deployStop(options: DeployStopOptions): Promise<DeployStop
   if (target === 'local' || target === 'all') {
     if (existsSync(PID_FILE)) {
       try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+        const pidFileContent = readFileSync(PID_FILE, 'utf-8').trim();
+        let pid: number;
+        try {
+          pid = JSON.parse(pidFileContent).pid;
+        } catch {
+          pid = parseInt(pidFileContent, 10);
+        }
         process.kill(pid, 'SIGTERM');
         result.local = { stopped: true, pid };
       } catch {

@@ -204,7 +204,11 @@ export class LocalTransport {
           return result;
         }
       } catch (error) {
-        if (i === maxAttempts - 1) {
+        // Don't retry non-network errors (e.g. JSON serialization failures)
+        const isNetworkError = error instanceof TypeError && (
+          error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Failed')
+        );
+        if (!isNetworkError || i === maxAttempts - 1) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           this.serverAvailable = false;
           if (this.config.debug) {

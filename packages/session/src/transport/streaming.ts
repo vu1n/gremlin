@@ -93,8 +93,12 @@ export class StreamingTransport {
    * Stop streaming. Flushes any pending events.
    */
   stop(): void {
-    // Final flush
-    this.flush();
+    // Use beacon for reliable delivery on stop (avoids async race with nulling sessionId)
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      this.flushBeacon();
+    } else {
+      this.flush();
+    }
 
     // Clear timer
     if (this.flushTimer) {
@@ -142,6 +146,7 @@ export class StreamingTransport {
   }
 
   private flushing = false;
+  private pendingFlush = false;
 
   /**
    * Flush pending events to server.
@@ -149,7 +154,10 @@ export class StreamingTransport {
   flush(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
-    if (this.flushing) return; // Prevent concurrent flushes
+    if (this.flushing) {
+      this.pendingFlush = true; // Re-flush after current completes
+      return;
+    }
 
     // Snapshot what we're sending but don't clear yet
     const events = this.pendingEvents;
@@ -184,6 +192,10 @@ export class StreamingTransport {
       })
       .finally(() => {
         this.flushing = false;
+        if (this.pendingFlush) {
+          this.pendingFlush = false;
+          this.flush();
+        }
       });
   }
 
@@ -335,10 +347,14 @@ export class StreamingTransport {
       // Cap stored events to prevent unbounded localStorage growth (after append)
       const MAX_STORED_EVENTS = 500;
       if (data.events.length > MAX_STORED_EVENTS) {
-        data.events = data.events.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+        const dropped = data.events.length - MAX_STORED_EVENTS;
+        if (this.config.debug) {
+          console.warn(`[StreamingTransport] localStorage overflow, dropping ${dropped} oldest events`);
+        }
+        data.events = data.events.slice(-MAX_STORED_EVENTS);
       }
       if (data.rrwebEvents.length > MAX_STORED_EVENTS) {
-        data.rrwebEvents = data.rrwebEvents.slice(-Math.floor(MAX_STORED_EVENTS / 2));
+        data.rrwebEvents = data.rrwebEvents.slice(-MAX_STORED_EVENTS);
       }
 
       localStorage.setItem(key, JSON.stringify(data));

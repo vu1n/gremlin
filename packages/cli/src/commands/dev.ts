@@ -408,7 +408,7 @@ function extractAnalytics(session: GremlinSession): SessionAnalytics {
 
   return {
     sessionId: session.header.sessionId,
-    duration,
+    duration: duration / 1000, // store as seconds
     eventCount: events.length,
     errorCount,
     screens: Array.from(screens),
