@@ -51,24 +51,24 @@ export async function analyze(options: AnalyzeOptions): Promise<AnalyzeResult | 
   const apiKey = getApiKey(provider);
   if (!apiKey) {
     const msg = `No API key found for ${provider}. Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY`;
-    outputError('analyze', [msg], options);
-    if (!json) console.error(msg);
-    return null;
+    if (outputError('analyze', [msg], options)) process.exit(1);
+    console.error(msg);
+    process.exit(1);
   }
 
   if (!existsSync(input)) {
     const msg = `Sessions directory not found: ${input}. Run "gremlin dev" first to record sessions.`;
-    outputError('analyze', [msg], options);
-    if (!json) console.error(msg);
-    return null;
+    if (outputError('analyze', [msg], options)) process.exit(1);
+    console.error(msg);
+    process.exit(1);
   }
 
   const sessions = await loadSessions(input);
   if (sessions.length === 0) {
     const msg = 'No sessions found. Use your app while "gremlin dev" is running to record sessions.';
-    outputError('analyze', [msg], options);
-    if (!json) console.error(msg);
-    return null;
+    if (outputError('analyze', [msg], options)) process.exit(1);
+    console.error(msg);
+    process.exit(1);
   }
 
   if (!json) {

@@ -136,8 +136,7 @@ export class PerformanceMonitor {
 
     if (this.config.trackJSLag) {
       sample.jsThreadLag = Math.round(this.maxLagSinceLastSample);
-      // Reset so subsequent calls don't report stale lag values
-      this.maxLagSinceLastSample = 0;
+      // Don't reset here — lag accumulates until markNavigation or periodic reset
     }
 
     if (this.config.trackMemory) {
@@ -156,6 +155,7 @@ export class PerformanceMonitor {
    */
   public markNavigation(): void {
     this.lastNavigationTime = Date.now();
+    this.maxLagSinceLastSample = 0;
   }
 
   /**
@@ -197,17 +197,13 @@ export class PerformanceMonitor {
   // Private Methods - JS Thread Lag Tracking
   // ========================================================================
 
-  private static readonly LAG_CHECK_INTERVAL = 100;
-
   private startJSLagTracking(): void {
-    // Use InteractionManager to detect when JS thread is busy.
-    // Subtract the expected timer interval so idle lag reports ~0ms.
+    // Use InteractionManager to detect when JS thread is busy
     const checkLag = () => {
       if (!this.isRunning) return;
 
       const now = Date.now();
-      const elapsed = now - this.lastInteractionTime;
-      const lag = Math.max(0, elapsed - PerformanceMonitor.LAG_CHECK_INTERVAL);
+      const lag = now - this.lastInteractionTime;
 
       // Update max lag
       if (lag > this.maxLagSinceLastSample) {
@@ -219,7 +215,7 @@ export class PerformanceMonitor {
       // Schedule next check after runAfterInteractions
       InteractionManager.runAfterInteractions(() => {
         if (!this.isRunning) return;
-        this.lagTimer = setTimeout(checkLag, PerformanceMonitor.LAG_CHECK_INTERVAL);
+        this.lagTimer = setTimeout(checkLag, 100);
       });
     };
 

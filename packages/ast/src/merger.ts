@@ -112,7 +112,22 @@ export function mergeSpecs(
   const stateObservations = new Map<string, number>();
   const stateDurations = new Map<string, number[]>();
 
+  // Track previous navigation timestamp per session for duration computation
+  const lastNavTimestamp = new Map<string, { screen: string; timestamp: number }>();
+
   for (const path of navigationPaths) {
+    // Compute time-in-state from previous navigation in the same session
+    const prev = lastNavTimestamp.get(path.sessionId);
+    if (prev) {
+      const duration = path.timestamp - prev.timestamp;
+      if (duration > 0) {
+        const durations = stateDurations.get(prev.screen) ?? [];
+        durations.push(duration);
+        stateDurations.set(prev.screen, durations);
+      }
+    }
+    lastNavTimestamp.set(path.sessionId, { screen: path.to, timestamp: path.timestamp });
+
     // Track state observations
     stateObservations.set(path.from, (stateObservations.get(path.from) ?? 0) + 1);
     stateObservations.set(path.to, (stateObservations.get(path.to) ?? 0) + 1);

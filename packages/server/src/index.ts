@@ -21,10 +21,10 @@ import {
   getSessionPerformance,
 } from './storage';
 
-/** Constant-time string comparison to prevent timing attacks */
+/** Constant-time string comparison to prevent timing attacks (length-safe) */
 function timingSafeEqual(a: string, b: string): boolean {
   const maxLen = Math.max(a.length, b.length);
-  let result = a.length ^ b.length; // non-zero if lengths differ
+  let result = a.length ^ b.length; // Non-zero if lengths differ
   for (let i = 0; i < maxLen; i++) {
     result |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
@@ -109,7 +109,18 @@ app.use('/v1/*', authMiddleware);
 // ============================================================================
 
 app.get('/', (c) => {
-  return c.json({ status: 'ok', name: 'Gremlin API' });
+  return c.json({
+    name: 'Gremlin API',
+    version: '0.0.1',
+    endpoints: {
+      upload: 'POST /v1/sessions',
+      get: 'GET /v1/sessions/:id',
+      list: 'GET /v1/sessions',
+      delete: 'DELETE /v1/sessions/:id',
+      performance: 'GET /v1/sessions/:id/performance',
+      analyticsPerformance: 'GET /v1/analytics/performance',
+    },
+  });
 });
 
 // ============================================================================

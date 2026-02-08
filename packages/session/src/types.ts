@@ -417,6 +417,7 @@ export interface SessionAnalytics {
   errorCount: number;
   screens: string[];
   platform: 'web' | 'ios' | 'android';
+  appName?: string;
   deviceInfo: Partial<DeviceInfo>;
   timestamp: Date;
 }

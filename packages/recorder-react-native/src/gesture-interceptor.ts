@@ -141,8 +141,9 @@ export class GestureInterceptor {
    */
   public cleanup(): void {
     this.cancelLongPress();
-    this.flushPendingTap();
+    this.cancelPendingTap();
     this.touchStart = null;
+    this.lastTap = null;
   }
 
   // ========================================================================

@@ -61,14 +61,7 @@ export async function storeSession(
   await withIndexLock(async () => {
     const index = await loadIndex(config);
     index[sessionId] = indexEntry;
-    try {
-      await saveIndex(config, index);
-    } catch (err) {
-      // Revert in-memory state on disk write failure
-      delete index[sessionId];
-      console.error('Failed to save session index:', err);
-      throw err;
-    }
+    await saveIndex(config, index);
   });
 
   return sessionId;
@@ -124,7 +117,7 @@ export async function listSessions(
   }));
 
   const nextCursor =
-    startIndex + limit < entries.length ? page[page.length - 1]?.id : undefined;
+    startIndex + limit < entries.length && page.length > 0 ? page[page.length - 1].id : undefined;
 
   return {
     sessions,
@@ -150,16 +143,8 @@ export async function deleteSession(
   await withIndexLock(async () => {
     const index = await loadIndex(config);
     if (index[id]) {
-      const backup = index[id];
       delete index[id];
-      try {
-        await saveIndex(config, index);
-      } catch (err) {
-        // Revert in-memory state on disk write failure
-        index[id] = backup;
-        console.error('Failed to save session index after delete:', err);
-        throw err;
-      }
+      await saveIndex(config, index);
     }
   });
 
@@ -303,7 +288,7 @@ export async function listSessionsWithPerf(
   }
 
   const page = entries.slice(startIndex, startIndex + limit);
-  const nextCursor = startIndex + limit < entries.length ? page[page.length - 1]?.id : undefined;
+  const nextCursor = startIndex + limit < entries.length && page.length > 0 ? page[page.length - 1].id : undefined;
 
   return {
     sessions: page.map(entryToSummary),

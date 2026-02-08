@@ -129,8 +129,9 @@ describe('Gremlin API', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.status).toBe('ok');
       expect(data.name).toBe('Gremlin API');
+      expect(data.version).toBe('0.0.1');
+      expect(data.endpoints).toBeDefined();
     });
   });
 

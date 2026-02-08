@@ -51,7 +51,6 @@ export class StreamingTransport {
   private pendingRrwebEvents: unknown[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private serverAvailable = true;
-  private generation = 0;
 
   constructor(config: StreamingTransportConfig = {}) {
     this.config = {
@@ -70,7 +69,6 @@ export class StreamingTransport {
    * Call this when recording starts.
    */
   start(sessionId: string): void {
-    this.generation++;
     this.sessionId = sessionId;
     this.pendingEvents = [];
     this.pendingRrwebEvents = [];
@@ -95,12 +93,8 @@ export class StreamingTransport {
    * Stop streaming. Flushes any pending events.
    */
   stop(): void {
-    // Use beacon for reliable delivery on stop (avoids async race with nulling sessionId)
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      this.flushBeacon();
-    } else {
-      this.flush();
-    }
+    // Final flush
+    this.flush();
 
     // Clear timer
     if (this.flushTimer) {
@@ -118,8 +112,7 @@ export class StreamingTransport {
       console.log(`[StreamingTransport] Stopped for session ${this.sessionId}`);
     }
 
-    // Reset flushing so a subsequent start() isn't blocked by in-flight flush
-    this.flushing = false;
+    // Don't reset this.flushing -- let the in-flight flush's .finally() handle it
     this.sessionId = null;
   }
 
@@ -148,7 +141,6 @@ export class StreamingTransport {
   }
 
   private flushing = false;
-  private pendingFlush = false;
 
   /**
    * Flush pending events to server.
@@ -156,10 +148,7 @@ export class StreamingTransport {
   flush(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
-    if (this.flushing) {
-      this.pendingFlush = true; // Re-flush after current completes
-      return;
-    }
+    if (this.flushing) return; // Prevent concurrent flushes
 
     // Snapshot what we're sending but don't clear yet
     const events = this.pendingEvents;
@@ -177,12 +166,11 @@ export class StreamingTransport {
     this.pendingEvents = [];
     this.pendingRrwebEvents = [];
     this.flushing = true;
-    const flushGeneration = this.generation;
 
-    // Send async — restore events on failure (only if same session)
+    // Send async — restore events on failure
     this.sendBatch(payload)
       .then((success) => {
-        if (!success && this.generation === flushGeneration) {
+        if (!success) {
           // Prepend failed events back so they're retried on next flush
           this.pendingEvents = [...events, ...this.pendingEvents];
           this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
@@ -194,13 +182,7 @@ export class StreamingTransport {
         }
       })
       .finally(() => {
-        if (this.generation === flushGeneration) {
-          this.flushing = false;
-          if (this.pendingFlush) {
-            this.pendingFlush = false;
-            this.flush();
-          }
-        }
+        this.flushing = false;
       });
   }
 
@@ -210,10 +192,7 @@ export class StreamingTransport {
   flushBeacon(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
-    // Don't bail when flushing — the in-flight flush already swapped its arrays,
-    // so pendingEvents contains only NEW events accumulated since. These must be
-    // sent via beacon because the page may be unloading and the in-flight fetch
-    // won't complete.
+    if (this.flushing) return; // Prevent race with in-flight flush()
 
     // Snapshot and swap (same pattern as flush) to avoid races
     const events = this.pendingEvents;
@@ -355,14 +334,10 @@ export class StreamingTransport {
       // Cap stored events to prevent unbounded localStorage growth (after append)
       const MAX_STORED_EVENTS = 500;
       if (data.events.length > MAX_STORED_EVENTS) {
-        const dropped = data.events.length - MAX_STORED_EVENTS;
-        if (this.config.debug) {
-          console.warn(`[StreamingTransport] localStorage overflow, dropping ${dropped} oldest events`);
-        }
-        data.events = data.events.slice(-MAX_STORED_EVENTS);
+        data.events = data.events.slice(-Math.floor(MAX_STORED_EVENTS / 2));
       }
       if (data.rrwebEvents.length > MAX_STORED_EVENTS) {
-        data.rrwebEvents = data.rrwebEvents.slice(-MAX_STORED_EVENTS);
+        data.rrwebEvents = data.rrwebEvents.slice(-Math.floor(MAX_STORED_EVENTS / 2));
       }
 
       localStorage.setItem(key, JSON.stringify(data));

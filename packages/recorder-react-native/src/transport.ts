@@ -121,9 +121,8 @@ export class LocalTransport {
    * Stop batch uploading.
    */
   stopBatching(): void {
-    // Skip flushing batch — full session upload follows immediately with all events,
-    // so flushing here would only create a race (duplicated or lost events).
-    this.pendingEvents = [];
+    // Fire-and-forget: full session upload follows immediately, so no data loss
+    void this.flushBatch();
     if (this.batchTimer) {
       clearInterval(this.batchTimer);
       this.batchTimer = null;

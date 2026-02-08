@@ -13,11 +13,6 @@ import type {
   PerformanceTimelineEntry,
 } from '@gremlin/server-shared';
 
-/** Validate that an ID contains no path traversal characters */
-function isValidId(id: string): boolean {
-  return /^[a-zA-Z0-9_\-]+$/.test(id) && id.length > 0;
-}
-
 /**
  * Generate a unique session ID
  */
@@ -80,7 +75,6 @@ export async function getSession(
   env: Env,
   id: string
 ): Promise<GremlinSession | null> {
-  if (!isValidId(id)) return null;
   try {
     const object = await env.SESSIONS.get(`sessions/${id}.json`);
 
@@ -175,7 +169,6 @@ export async function deleteSession(
   env: Env,
   id: string
 ): Promise<boolean> {
-  if (!isValidId(id)) return false;
   try {
     // Check if the session exists first
     const exists = await env.SESSIONS.head(`sessions/${id}.json`);
@@ -201,7 +194,6 @@ export async function getSessionMetadata(
   env: Env,
   id: string
 ): Promise<SessionSummary | null> {
-  if (!isValidId(id)) return null;
   try {
     const object = await env.SESSIONS.head(`sessions/${id}.json`);
 
@@ -274,11 +266,11 @@ function getPerfValueFromSummary(s: SessionSummary, key: PerfSortKey): number | 
  * Load all session summaries from R2 using only metadata (no full session downloads).
  * Performance data is stored in custom metadata during storeSession.
  */
-async function loadAllSessionSummaries(env: Env, maxObjects: number = 10000): Promise<SessionSummary[]> {
+async function loadAllSessionSummaries(env: Env): Promise<SessionSummary[]> {
   const summaries: SessionSummary[] = [];
   let cursor: string | undefined;
 
-  // Paginate through R2 objects using metadata only (capped to prevent OOM)
+  // Paginate through all R2 objects using metadata only
   do {
     const listed = await env.SESSIONS.list({
       prefix: 'sessions/',
@@ -308,11 +300,8 @@ async function loadAllSessionSummaries(env: Env, maxObjects: number = 10000): Pr
         uploadedAt: parseInt(metadata.uploadedAt || '0', 10),
         performance: parsePerformanceMetadata(metadata.performance),
       });
-
-      if (summaries.length >= maxObjects) break;
     }
 
-    if (summaries.length >= maxObjects) break;
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
 
@@ -357,7 +346,7 @@ export async function listSessionsWithPerf(
   }
 
   const page = summaries.slice(startIndex, startIndex + limit);
-  const nextCursor = page.length > 0 && startIndex + limit < summaries.length ? page[page.length - 1].id : undefined;
+  const nextCursor = startIndex + limit < summaries.length && page.length > 0 ? page[page.length - 1].id : undefined;
 
   return {
     sessions: page,
@@ -466,10 +455,11 @@ export async function getSessionPerformance(
   env: Env,
   id: string
 ): Promise<PerformanceTimeline | null> {
-  const session = await getSession(env, id);
-  if (!session) return null;
+  const object = await env.SESSIONS.get(`sessions/${id}.json`);
+  if (!object) return null;
 
-  const size = new TextEncoder().encode(JSON.stringify(session)).length;
+  const session = JSON.parse(await object.text()) as GremlinSession;
+  const size = object.size;
   const metadata = await getSessionMetadata(env, id);
   const uploadedAt = metadata?.uploadedAt ?? 0;
   const summary = createSessionSummary(id, session, size, uploadedAt);
