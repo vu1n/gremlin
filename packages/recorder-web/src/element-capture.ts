@@ -8,23 +8,7 @@
  * 4. CSS selector (fallback)
  */
 
-import type { ElementInfo, Rect } from '@gremlin/session';
-
-// Import ElementType specifically from session types to avoid ambiguity
-type ElementType =
-  | 'button'
-  | 'link'
-  | 'input'
-  | 'text'
-  | 'image'
-  | 'container'
-  | 'scroll_view'
-  | 'list'
-  | 'list_item'
-  | 'modal'
-  | 'pressable'
-  | 'touchable'
-  | 'unknown';
+import type { ElementInfo, ElementType, Rect } from '@gremlin/session';
 
 /**
  * Capture element information for the dictionary.

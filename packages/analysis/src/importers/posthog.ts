@@ -6,18 +6,18 @@
  * meaningful user interactions.
  */
 
-import type {
-  GremlinSession,
-  GremlinEvent,
-  ElementInfo,
+import {
+  type GremlinSession,
+  type GremlinEvent,
+  type ElementInfo,
   EventTypeEnum,
-  DeviceInfo,
-  AppInfo,
-  TapEvent,
-  ScrollEvent,
-  InputEvent,
-  NavigationEvent,
-  ErrorEvent,
+  type DeviceInfo,
+  type AppInfo,
+  type TapEvent,
+  type ScrollEvent,
+  type InputEvent,
+  type NavigationEvent,
+  type ErrorEvent,
 } from '@gremlin/session';
 
 // ============================================================================
@@ -332,7 +332,7 @@ export class PostHogImporter {
         // Navigation event from meta
         const data = event.data as MetaData;
         events.push({
-          type: 6 as EventTypeEnum, // NAVIGATION
+          type: EventTypeEnum.NAVIGATION,
           data: {
             kind: 'navigation',
             navType: 'push',
@@ -357,7 +357,7 @@ export class PostHogImporter {
                 session
               );
               events.push({
-                type: 0 as EventTypeEnum, // TAP
+                type: EventTypeEnum.TAP,
                 data: {
                   kind: 'tap',
                   x: data.x || 0,
@@ -371,7 +371,7 @@ export class PostHogImporter {
                 session
               );
               events.push({
-                type: 1 as EventTypeEnum, // DOUBLE_TAP
+                type: EventTypeEnum.DOUBLE_TAP,
                 data: {
                   kind: 'double_tap',
                   x: data.x || 0,
@@ -389,7 +389,7 @@ export class PostHogImporter {
                 session
               );
               events.push({
-                type: 4 as EventTypeEnum, // SCROLL
+                type: EventTypeEnum.SCROLL,
                 data: {
                   kind: 'scroll',
                   deltaX: data.scrollData.x,
@@ -407,7 +407,7 @@ export class PostHogImporter {
                 session
               );
               events.push({
-                type: 5 as EventTypeEnum, // INPUT
+                type: EventTypeEnum.INPUT,
                 data: {
                   kind: 'input',
                   elementIndex,
@@ -431,7 +431,7 @@ export class PostHogImporter {
               };
               if (payload.level === 'error') {
                 events.push({
-                  type: 9 as EventTypeEnum, // ERROR
+                  type: EventTypeEnum.ERROR,
                   data: {
                     kind: 'error',
                     message: payload.payload.join(' '),

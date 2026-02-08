@@ -14,6 +14,7 @@ import type {
   StateId,
   TransitionId,
 } from '../spec/types';
+import { getStateName } from './flows';
 
 // ============================================================================
 // Types
@@ -876,7 +877,7 @@ export function createSeededRandom(seed: number): () => number {
 }
 
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 8);
+  return crypto.randomUUID().split('-')[0];
 }
 
 function escapeString(str: string): string {
@@ -939,7 +940,3 @@ function findPathToState(
   return [];
 }
 
-function getStateName(spec: GremlinSpec, stateId: StateId): string {
-  const state = spec.states.find((s) => s.id === stateId);
-  return state?.name || stateId;
-}

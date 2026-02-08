@@ -56,7 +56,6 @@ export async function storeSession(
     customMetadata: metadata,
     httpMetadata: {
       contentType: 'application/json',
-      contentEncoding: 'gzip',
     },
   });
 
@@ -150,10 +149,7 @@ export async function listSessions(
     };
   } catch (error) {
     console.error('Error listing sessions:', error);
-    return {
-      sessions: [],
-      hasMore: false,
-    };
+    throw error;
   }
 }
 
@@ -311,11 +307,19 @@ export async function listSessionsWithPerf(
   });
 
   const limit = opts.limit ?? 20;
-  const page = summaries.slice(0, limit);
+  let startIndex = 0;
+  if (opts.cursor) {
+    const cursorIndex = summaries.findIndex((s) => s.id === opts.cursor);
+    if (cursorIndex >= 0) startIndex = cursorIndex + 1;
+  }
+
+  const page = summaries.slice(startIndex, startIndex + limit);
+  const nextCursor = startIndex + limit < summaries.length ? page[page.length - 1]?.id : undefined;
 
   return {
     sessions: page,
-    hasMore: summaries.length > limit,
+    cursor: nextCursor,
+    hasMore: Boolean(nextCursor),
     totalCount: summaries.length,
   };
 }

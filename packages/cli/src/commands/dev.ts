@@ -85,6 +85,15 @@ export async function dev(options: DevOptions): Promise<void> {
 
   let sessionCount = 0;
 
+  // Per-session lock to prevent read-modify-write races on concurrent appends
+  const sessionLocks = new Map<string, Promise<unknown>>();
+  function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = sessionLocks.get(sessionId) ?? Promise.resolve();
+    const result = prev.catch(() => {}).then(() => fn());
+    sessionLocks.set(sessionId, result);
+    return result;
+  }
+
   // Start HTTP server
   const server = Bun.serve({
     port,
@@ -218,36 +227,39 @@ export async function dev(options: DevOptions): Promise<void> {
 
           const sessionFile = join(output, `${sessionId}.json`);
 
-          // Load existing session or create new one
-          let session: GremlinSession;
-          if (existsSync(sessionFile)) {
-            const content = await Bun.file(sessionFile).text();
-            session = JSON.parse(content);
-          } else {
-            session = {
-              header: { sessionId, startTime: Date.now() },
-              events: [],
-              elements: [],
-              screenshots: [],
-            } as unknown as GremlinSession;
-          }
+          // Lock per session to prevent concurrent read-modify-write races
+          await withSessionLock(sessionId, async () => {
+            // Load existing session or create new one
+            let session: GremlinSession;
+            if (existsSync(sessionFile)) {
+              const content = await Bun.file(sessionFile).text();
+              session = JSON.parse(content);
+            } else {
+              session = {
+                header: { sessionId, startTime: Date.now() },
+                events: [],
+                elements: [],
+                screenshots: [],
+              } as unknown as GremlinSession;
+            }
 
-          // Append events
-          if (events && Array.isArray(events)) {
-            session.events = [...(session.events || []), ...events];
-          }
-          if (rrwebEvents && Array.isArray(rrwebEvents)) {
-            session.rrwebEvents = [...(session.rrwebEvents || []), ...rrwebEvents];
-          }
+            // Append events
+            if (events && Array.isArray(events)) {
+              session.events = [...(session.events || []), ...events];
+            }
+            if (rrwebEvents && Array.isArray(rrwebEvents)) {
+              session.rrwebEvents = [...(session.rrwebEvents || []), ...rrwebEvents];
+            }
 
-          // Save updated session (atomic write)
-          const tempFile = `${sessionFile}.tmp`;
-          writeFileSync(tempFile, JSON.stringify(session, null, 2));
-          renameSync(tempFile, sessionFile);
+            // Save updated session (atomic write)
+            const tempFile = `${sessionFile}.tmp`;
+            writeFileSync(tempFile, JSON.stringify(session, null, 2));
+            renameSync(tempFile, sessionFile);
 
-          if (verbose && !jsonMode) {
-            console.log(`  [append] ${sessionId}: +${events?.length || 0} events, +${rrwebEvents?.length || 0} rrweb`);
-          }
+            if (verbose && !jsonMode) {
+              console.log(`  [append] ${sessionId}: +${events?.length || 0} events, +${rrwebEvents?.length || 0} rrweb`);
+            }
+          });
 
           return new Response(
             JSON.stringify({ status: 'ok', sessionId }),

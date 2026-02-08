@@ -150,6 +150,8 @@ export class GremlinRecorder extends BaseRecorder {
 
   /** Streaming transport for real-time event streaming */
   private streamingTransport: StreamingTransport | null = null;
+  private lastScrollX = 0;
+  private lastScrollY = 0;
 
   constructor(config: RecorderConfig) {
     super({
@@ -615,19 +617,25 @@ export class GremlinRecorder extends BaseRecorder {
     if (!this.isRecording()) return;
 
     const target = event.target;
-    let scrollX = 0;
-    let scrollY = 0;
+    let absX = 0;
+    let absY = 0;
 
     if (target === document || target === document.documentElement) {
-      scrollY = window.scrollY;
-      scrollX = window.scrollX;
+      absY = window.scrollY;
+      absX = window.scrollX;
     } else if (target instanceof HTMLElement) {
-      scrollY = target.scrollTop;
-      scrollX = target.scrollLeft;
+      absY = target.scrollTop;
+      absX = target.scrollLeft;
     }
 
+    // Compute delta from last known position
+    const deltaX = absX - this.lastScrollX;
+    const deltaY = absY - this.lastScrollY;
+    this.lastScrollX = absX;
+    this.lastScrollY = absY;
+
     // Use base class recordScroll - batching handled by EventBatcher
-    this.recordScroll(scrollX, scrollY);
+    this.recordScroll(deltaX, deltaY);
   };
 
   private handlePopState = (): void => {

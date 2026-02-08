@@ -14,6 +14,7 @@ import type {
   Predicate,
   StateId,
 } from '../spec/types';
+import { extractFlows, getStateName, type Flow } from './flows';
 
 // ============================================================================
 // Types
@@ -140,94 +141,6 @@ export function generateMaestroTestSuite(
   }
 
   return lines.join('\n');
-}
-
-// ============================================================================
-// Flow Extraction
-// ============================================================================
-
-interface Flow {
-  name: string;
-  description: string;
-  transitions: Transition[];
-  startState: StateId;
-  endState: StateId;
-}
-
-function extractFlows(spec: GremlinSpec): Flow[] {
-  const flows: Flow[] = [];
-
-  // Find terminal states
-  const terminalStates = new Set<StateId>();
-  const statesWithOutgoing = new Set<StateId>();
-
-  for (const transition of spec.transitions) {
-    statesWithOutgoing.add(transition.from);
-  }
-
-  for (const state of spec.states) {
-    if (!statesWithOutgoing.has(state.id)) {
-      terminalStates.add(state.id);
-    }
-  }
-
-  // Find all paths from initial state to terminal states
-  const visited = new Set<string>();
-
-  function dfs(
-    currentState: StateId,
-    path: Transition[],
-    maxDepth: number
-  ): void {
-    if (maxDepth <= 0) return;
-
-    // Found a terminal state - save the flow
-    if (terminalStates.has(currentState) && path.length > 0) {
-      const pathKey = path.map((t) => t.id).join('->');
-      if (!visited.has(pathKey)) {
-        visited.add(pathKey);
-
-        const startState = path[0].from;
-        const endState = path[path.length - 1].to;
-
-        flows.push({
-          name: `${getStateName(spec, startState)}_to_${getStateName(spec, endState)}`,
-          description: `Flow from ${getStateName(spec, startState)} to ${getStateName(spec, endState)}`,
-          transitions: [...path],
-          startState,
-          endState,
-        });
-      }
-      return;
-    }
-
-    // Continue exploring
-    const outgoing = spec.transitions.filter((t) => t.from === currentState);
-
-    for (const transition of outgoing) {
-      // Avoid infinite loops
-      if (path.some((t) => t.id === transition.id)) continue;
-
-      dfs(transition.to, [...path, transition], maxDepth - 1);
-    }
-  }
-
-  dfs(spec.initialState, [], 10);
-
-  // Sort by frequency (most common paths first)
-  flows.sort((a, b) => {
-    const freqA = a.transitions.reduce((sum, t) => sum + t.frequency, 0);
-    const freqB = b.transitions.reduce((sum, t) => sum + t.frequency, 0);
-    return freqB - freqA;
-  });
-
-  // Limit to top 10 flows
-  return flows.slice(0, 10);
-}
-
-function getStateName(spec: GremlinSpec, stateId: StateId): string {
-  const state = spec.states.find((s) => s.id === stateId);
-  return state?.name || stateId;
 }
 
 // ============================================================================

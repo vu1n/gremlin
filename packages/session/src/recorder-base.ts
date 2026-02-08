@@ -337,7 +337,7 @@ export abstract class BaseRecorder {
         fromScreen,
         params,
         url,
-      } as NavigationEvent,
+      },
     });
 
     this.currentScreen = screen;

@@ -50,25 +50,6 @@ export function estimateCompressionRatio(session: ProtoSession): number {
   return protoSize / jsonSize;
 }
 
-/**
- * Utility: Convert TypeScript session types to proto format
- * This bridges the gap between @gremlin/core types and proto types
- */
-export function toProtoSession(session: any): ProtoSession {
-  // The proto types match the TypeScript types closely
-  // This function handles any necessary transformations
-  return session as ProtoSession;
-}
-
-/**
- * Utility: Convert proto format to TypeScript session types
- */
-export function fromProtoSession(proto: ProtoSession): any {
-  // The proto types match the TypeScript types closely
-  // This function handles any necessary transformations
-  return proto;
-}
-
 // Export type utilities
 export type {
   ProtoSession,

@@ -2,7 +2,7 @@
  * Filesystem storage layer for Gremlin sessions
  */
 
-import { readFileSync, writeFileSync, existsSync, rmSync, renameSync } from 'fs';
+import { rename, rm } from 'fs/promises';
 import { join } from 'path';
 import type { GremlinSession, PerformanceSample } from '@gremlin/session';
 import type {
@@ -40,8 +40,8 @@ export async function storeSession(
   const sessionSize = new TextEncoder().encode(sessionJson).length;
   const uploadedAt = Date.now();
 
-  writeFileSync(tempSessionPath, sessionJson);
-  renameSync(tempSessionPath, sessionPath);
+  await Bun.write(tempSessionPath, sessionJson);
+  await rename(tempSessionPath, sessionPath);
 
   const summary = createSessionSummary(sessionId, session, sessionSize, uploadedAt);
   const indexEntry: SessionIndexEntry = {
@@ -50,9 +50,9 @@ export async function storeSession(
     path: sessionPath,
   };
 
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   index[sessionId] = indexEntry;
-  saveIndex(config, index);
+  await saveIndex(config, index);
 
   return sessionId;
 }
@@ -62,12 +62,13 @@ export async function getSession(
   id: string
 ): Promise<GremlinSession | null> {
   const sessionPath = join(config.dataDir, 'sessions', `${id}.json`);
+  const file = Bun.file(sessionPath);
 
-  if (!existsSync(sessionPath)) {
+  if (!(await file.exists())) {
     return null;
   }
 
-  const content = readFileSync(sessionPath, 'utf-8');
+  const content = await file.text();
   return JSON.parse(content) as GremlinSession;
 }
 
@@ -76,7 +77,7 @@ export async function listSessions(
   limit: number = 20,
   cursor?: string
 ): Promise<SessionListResult> {
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   const entries = Object.values(index).sort(
     (a, b) => b.uploadedAt - a.uploadedAt
   );
@@ -121,17 +122,18 @@ export async function deleteSession(
   id: string
 ): Promise<boolean> {
   const sessionPath = join(config.dataDir, 'sessions', `${id}.json`);
+  const file = Bun.file(sessionPath);
 
-  if (!existsSync(sessionPath)) {
+  if (!(await file.exists())) {
     return false;
   }
 
-  rmSync(sessionPath, { force: true });
+  await rm(sessionPath, { force: true });
 
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   if (index[id]) {
     delete index[id];
-    saveIndex(config, index);
+    await saveIndex(config, index);
   }
 
   return true;
@@ -141,7 +143,7 @@ export async function getSessionMetadata(
   config: ServerConfig,
   id: string
 ): Promise<SessionSummary | null> {
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   const entry = index[id];
 
   if (!entry) {
@@ -164,15 +166,16 @@ export async function getSessionMetadata(
   };
 }
 
-function loadIndex(config: ServerConfig): Record<string, SessionIndexEntry> {
+async function loadIndex(config: ServerConfig): Promise<Record<string, SessionIndexEntry>> {
   const indexPath = join(config.dataDir, INDEX_FILE);
+  const file = Bun.file(indexPath);
 
-  if (!existsSync(indexPath)) {
+  if (!(await file.exists())) {
     return {};
   }
 
   try {
-    const content = readFileSync(indexPath, 'utf-8');
+    const content = await file.text();
     return JSON.parse(content) as Record<string, SessionIndexEntry>;
   } catch (error) {
     console.error('Failed to read session index:', error);
@@ -180,14 +183,14 @@ function loadIndex(config: ServerConfig): Record<string, SessionIndexEntry> {
   }
 }
 
-function saveIndex(
+async function saveIndex(
   config: ServerConfig,
   index: Record<string, SessionIndexEntry>
-): void {
+): Promise<void> {
   const indexPath = join(config.dataDir, INDEX_FILE);
   const tempIndexPath = join(config.dataDir, `${INDEX_FILE}.tmp`);
-  writeFileSync(tempIndexPath, JSON.stringify(index, null, 2));
-  renameSync(tempIndexPath, indexPath);
+  await Bun.write(tempIndexPath, JSON.stringify(index, null, 2));
+  await rename(tempIndexPath, indexPath);
 }
 
 // ============================================================================
@@ -234,7 +237,7 @@ export async function listSessionsWithPerf(
   config: ServerConfig,
   opts: PerfQueryOptions
 ): Promise<SessionListResult> {
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   let entries = Object.values(index);
 
   // Apply filters
@@ -305,7 +308,7 @@ function aggregateMetric(values: number[]): { median: number; p75: number; p95: 
 export async function getPerformanceAggregation(
   config: ServerConfig
 ): Promise<PerformanceAggregation> {
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   const entries = Object.values(index);
 
   const lcpVals: number[] = [];
@@ -384,7 +387,7 @@ export async function getSessionPerformance(
   const session = await getSession(config, id);
   if (!session) return null;
 
-  const index = loadIndex(config);
+  const index = await loadIndex(config);
   const entry = index[id];
   const summary: SessionSummary = entry
     ? entryToSummary(entry)

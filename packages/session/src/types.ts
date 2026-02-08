@@ -247,6 +247,8 @@ export interface NavigationEvent {
   navType: 'push' | 'pop' | 'replace' | 'reset' | 'tab' | 'modal';
   /** Screen/route name */
   screen: string;
+  /** Previous screen (set by recorder) */
+  fromScreen?: string;
   /** Route parameters (may be masked) */
   params?: Record<string, unknown>;
   /** URL (web) */

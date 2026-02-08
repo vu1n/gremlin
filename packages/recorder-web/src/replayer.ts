@@ -75,6 +75,7 @@ export class GremlinReplayer {
   private player: any = null;
   private session: RrwebSession | null = null;
   private isPlaying = false;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: ReplayerConfig) {
     this.config = {
@@ -218,6 +219,10 @@ export class GremlinReplayer {
    * Destroy the player and clean up.
    */
   destroy(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
     if (this.player) {
       this.player.$destroy();
       this.player = null;
@@ -246,7 +251,7 @@ export class GremlinReplayer {
     }
 
     // Poll for time updates (rrweb-player doesn't have a native time event)
-    const pollInterval = setInterval(() => {
+    this.pollTimer = setInterval(() => {
       if (!this.player || !this.isPlaying) return;
 
       const current = this.getCurrentTime();
@@ -254,8 +259,9 @@ export class GremlinReplayer {
       this.config.onTimeUpdate(current, total);
 
       // Stop polling when finished
-      if (current >= total) {
-        clearInterval(pollInterval);
+      if (current >= total && this.pollTimer) {
+        clearInterval(this.pollTimer);
+        this.pollTimer = null;
       }
     }, 100);
   }

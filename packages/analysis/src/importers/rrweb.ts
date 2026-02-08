@@ -364,7 +364,7 @@ export class RrwebImporter {
 
   private generateSessionId(): string {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 10);
+    const random = crypto.randomUUID().split('-')[0];
     return `${timestamp}-${random}`;
   }
 

@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
+import { bodyLimit } from 'hono/body-limit';
 import type { ServerConfig, ErrorResponse } from './types';
 import { registerApiRoutes, type StorageAdapter } from '@gremlin/server-shared';
 import {
@@ -53,6 +54,9 @@ export function createApp(config: ServerConfig): Hono {
   );
 
   app.use('*', compress());
+
+  // Limit request body size (50MB max for session uploads)
+  app.use('/v1/*', bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
   const authMiddleware = async (c: any, next: any) => {
     if (config.disableAuth) {

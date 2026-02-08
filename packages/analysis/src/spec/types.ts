@@ -427,12 +427,13 @@ export interface ScreenshotRef {
 
 export function createSpec(name: string, platform: SpecMetadata['platform']): GremlinSpec {
   const now = new Date().toISOString();
+  const initial = createState('initial', 'Initial', 'session');
   return {
     name,
     schemaVersion: 1,
     variables: [],
-    states: [],
-    initialState: stateId('initial'),
+    states: [initial],
+    initialState: initial.id,
     transitions: [],
     properties: [],
     cycles: [],
