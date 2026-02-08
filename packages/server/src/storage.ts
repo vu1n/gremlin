@@ -5,6 +5,13 @@
 import type { GremlinSession, PerformanceSample } from '@gremlin/session';
 import type { Env, SessionListResult, SessionSummary } from './types';
 import { createSessionSummary } from './types';
+import type {
+  PerfSortKey,
+  PerfQueryOptions,
+  PerformanceAggregation,
+  PerformanceTimeline,
+  PerformanceTimelineEntry,
+} from '@gremlin/server-shared';
 
 /**
  * Generate a unique session ID
@@ -222,11 +229,6 @@ export async function getSessionMetadata(
 // Performance query helpers
 // ============================================================================
 
-type PerfSortKey =
-  | 'lcp' | 'cls' | 'inp' | 'fcp' | 'ttfb'
-  | 'avgFps' | 'minFps' | 'longTasks' | 'peakMemory' | 'pageLoad'
-  | 'duration' | 'eventCount' | 'startTime';
-
 function getPerfValueFromSummary(s: SessionSummary, key: PerfSortKey): number | undefined {
   const p = s.performance;
   switch (key) {
@@ -244,20 +246,6 @@ function getPerfValueFromSummary(s: SessionSummary, key: PerfSortKey): number | 
     case 'eventCount': return s.eventCount;
     case 'startTime': return s.startTime;
   }
-}
-
-const PERF_FILTER_MAP: Record<string, PerfSortKey> = {
-  lcp: 'lcp', cls: 'cls', inp: 'inp', fcp: 'fcp', ttfb: 'ttfb',
-  avgFps: 'avgFps', minFps: 'minFps', longTasks: 'longTasks',
-  peakMemory: 'peakMemory', pageLoad: 'pageLoad',
-  duration: 'duration', eventCount: 'eventCount',
-};
-
-export interface PerfQueryOptions {
-  sort?: PerfSortKey;
-  order?: 'asc' | 'desc';
-  limit?: number;
-  filters?: { key: PerfSortKey; op: 'gt' | 'lt'; value: number }[];
 }
 
 /**
@@ -332,46 +320,6 @@ export async function listSessionsWithPerf(
   };
 }
 
-export function parsePerfQueryParams(query: Record<string, string>): PerfQueryOptions {
-  const opts: PerfQueryOptions = {};
-
-  if (query.sort && isValidSortKey(query.sort)) {
-    opts.sort = query.sort;
-  }
-  if (query.order === 'asc' || query.order === 'desc') {
-    opts.order = query.order;
-  }
-  if (query.limit) {
-    const parsed = parseInt(query.limit, 10);
-    if (!isNaN(parsed) && parsed > 0) opts.limit = Math.min(parsed, 100);
-  }
-
-  const filters: PerfQueryOptions['filters'] = [];
-  for (const [param, val] of Object.entries(query)) {
-    const gtMatch = param.match(/^(\w+)_gt$/);
-    const ltMatch = param.match(/^(\w+)_lt$/);
-    const match = gtMatch || ltMatch;
-    if (!match) continue;
-    const filterName = match[1];
-    const sortKey = PERF_FILTER_MAP[filterName];
-    if (!sortKey) continue;
-    const num = parseFloat(val);
-    if (isNaN(num)) continue;
-    filters.push({ key: sortKey, op: gtMatch ? 'gt' : 'lt', value: num });
-  }
-
-  if (filters.length > 0) opts.filters = filters;
-  return opts;
-}
-
-function isValidSortKey(key: string): key is PerfSortKey {
-  return [
-    'lcp', 'cls', 'inp', 'fcp', 'ttfb',
-    'avgFps', 'minFps', 'longTasks', 'peakMemory', 'pageLoad',
-    'duration', 'eventCount', 'startTime',
-  ].includes(key);
-}
-
 // ============================================================================
 // Analytics / aggregation
 // ============================================================================
@@ -380,22 +328,6 @@ function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
-}
-
-export interface PerformanceAggregation {
-  sessionCount: number;
-  sessionsWithPerf: number;
-  webVitals: {
-    lcp: { median: number; p75: number; p95: number; count: number } | null;
-    cls: { median: number; p75: number; p95: number; count: number } | null;
-    inp: { median: number; p75: number; p95: number; count: number } | null;
-    fcp: { median: number; p75: number; p95: number; count: number } | null;
-    ttfb: { median: number; p75: number; p95: number; count: number } | null;
-  };
-  fps: { avgFps: number; minFps: number; count: number } | null;
-  longTasks: { totalCount: number; totalDuration: number; avgPerSession: number; count: number } | null;
-  memory: { avgPeak: number; maxPeak: number; count: number } | null;
-  pageLoad: { median: number; p75: number; p95: number; count: number } | null;
 }
 
 function aggregateMetric(values: number[]): { median: number; p75: number; p95: number; count: number } | null {
@@ -482,17 +414,6 @@ export async function getPerformanceAggregation(
 // ============================================================================
 // Per-session performance timeline
 // ============================================================================
-
-export interface PerformanceTimeline {
-  sessionId: string;
-  summary: SessionSummary;
-  timeline: PerformanceTimelineEntry[];
-}
-
-export interface PerformanceTimelineEntry {
-  timestamp: number;
-  perf: PerformanceSample;
-}
 
 export async function getSessionPerformance(
   env: Env,

@@ -639,7 +639,7 @@ export class GremlinRecorder extends BaseRecorder {
 
     this.navigationStartTime = Date.now();
     this.performanceMonitor?.markNavigation();
-    this.recordNavigation(document.title, 'push', { url: window.location.href });
+    this.recordNavigation(document.title, 'push', undefined, window.location.href);
   }
 
   private handleError = (event: Event): void => {
@@ -1067,7 +1067,7 @@ export class GremlinRecorder extends BaseRecorder {
     }
 
     // Record navigation event for the new page
-    this.recordNavigation(document.title, 'push', { url: window.location.href });
+    this.recordNavigation(document.title, 'push', undefined, window.location.href);
 
     const session = this.getSession();
     console.log(`GremlinRecorder: Resumed session ${session?.header.sessionId} on ${window.location.pathname}`);

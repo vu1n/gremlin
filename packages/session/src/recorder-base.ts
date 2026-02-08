@@ -94,7 +94,7 @@ export abstract class BaseRecorder {
   /** Generate unique session ID */
   protected generateSessionId(): string {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 10);
+    const random = crypto.randomUUID().split('-')[0];
     return `${timestamp}-${random}`;
   }
 
@@ -323,7 +323,8 @@ export abstract class BaseRecorder {
   recordNavigation(
     screen: string,
     navType: NavigationEvent['navType'] = 'push',
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    url?: string
   ): void {
     const fromScreen = this.currentScreen;
 
@@ -335,6 +336,7 @@ export abstract class BaseRecorder {
         screen,
         fromScreen,
         params,
+        url,
       } as NavigationEvent,
     });
 

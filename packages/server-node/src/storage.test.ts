@@ -13,10 +13,10 @@ import {
   deleteSession,
   getSessionMetadata,
   listSessionsWithPerf,
-  parsePerfQueryParams,
   getPerformanceAggregation,
   getSessionPerformance,
 } from './storage';
+import { parsePerfQueryParams } from '@gremlin/server-shared';
 
 function makeConfig(dataDir: string): ServerConfig {
   return {

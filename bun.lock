@@ -168,6 +168,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@gremlin/session": "workspace:*",
+        "hono": "^4.0.0",
       },
       "devDependencies": {
         "@types/bun": "latest",

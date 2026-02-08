@@ -24,6 +24,8 @@
       "@gremlin/recorder-react-native": ["./packages/recorder-react-native/src"],
       "@gremlin/proto": ["./packages/proto/src"],
       "@gremlin/server": ["./packages/server/src"],
+      "@gremlin/server-node": ["./packages/server-node/src"],
+      "@gremlin/server-shared": ["./packages/server-shared/src"],
       "@gremlin/ast": ["./packages/ast/src"]
     }
   },

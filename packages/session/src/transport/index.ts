@@ -8,6 +8,5 @@ export { LocalTransport } from './local';
 export type { StreamingTransportConfig } from './streaming';
 export { StreamingTransport } from './streaming';
 
-// Future: Cloud and S3 transports
-// export { CloudTransport } from './cloud';
-// export { S3Transport } from './s3';
+export type { ServerTransportConfig, ServerTransportResult } from './server';
+export { ServerTransport } from './server';

@@ -248,16 +248,16 @@ function analyzeSession(session) {
 function getEventTypeName(type) {
   const types = {
     0: 'TAP',
-    1: 'SWIPE',
-    2: 'PINCH',
-    3: 'LONG_PRESS',
+    1: 'DOUBLE_TAP',
+    2: 'LONG_PRESS',
+    3: 'SWIPE',
     4: 'SCROLL',
     5: 'INPUT',
     6: 'NAVIGATION',
-    7: 'LIFECYCLE',
-    8: 'ASSERTION',
+    7: 'NETWORK',
+    8: 'SCREEN_CAPTURE',
     9: 'ERROR',
-    10: 'CUSTOM'
+    10: 'APP_STATE'
   };
   return types[type] || 'UNKNOWN';
 }
@@ -294,16 +294,16 @@ window.gremlinDebug = {
 
     const typeMap = {
       'tap': 0,
-      'swipe': 1,
-      'pinch': 2,
-      'longpress': 3,
+      'double_tap': 1,
+      'long_press': 2,
+      'swipe': 3,
       'scroll': 4,
       'input': 5,
       'navigation': 6,
-      'lifecycle': 7,
-      'assertion': 8,
+      'network': 7,
+      'screen_capture': 8,
       'error': 9,
-      'custom': 10
+      'app_state': 10
     };
 
     const typeNum = typeof type === 'string' ? typeMap[type.toLowerCase()] : type;
