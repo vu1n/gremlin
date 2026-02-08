@@ -346,7 +346,7 @@ describe('RrwebImporter', () => {
     });
   });
 
-  test('extracts element text from various attributes', () => {
+  test('does not include unreferenced elements', () => {
     const events: RrwebEvent[] = [
       {
         type: RrwebEventType.Meta,

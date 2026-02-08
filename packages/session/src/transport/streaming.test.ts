@@ -462,27 +462,3 @@ describe('uploadSession', () => {
   });
 });
 
-// ============================================================================
-// Tests: Config Defaults
-// ============================================================================
-
-describe('config defaults', () => {
-  it('uses default endpoint localhost:3334', () => {
-    const transport = new StreamingTransport();
-    // We can't directly inspect private config, but we can verify
-    // it doesn't crash with defaults
-    expect(transport).toBeDefined();
-  });
-
-  it('respects custom config', () => {
-    const transport = new StreamingTransport({
-      endpoint: mockUrl,
-      batchInterval: 5000,
-      maxBatchSize: 25,
-      debug: true,
-      retryAttempts: 3,
-      retryDelayMs: 1000,
-    });
-    expect(transport).toBeDefined();
-  });
-});

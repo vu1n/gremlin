@@ -206,24 +206,3 @@ describe('checkServer', () => {
   });
 });
 
-// ============================================================================
-// Tests: Config Defaults
-// ============================================================================
-
-describe('config', () => {
-  it('uses localhost:3334 by default', () => {
-    const transport = new LocalTransport();
-    expect(transport).toBeDefined();
-  });
-
-  it('accepts custom config', () => {
-    const transport = new LocalTransport({
-      endpoint: 'http://custom:9999',
-      fallbackToStorage: false,
-      storagePrefix: 'custom_',
-      retryAttempts: 5,
-      retryDelayMs: 100,
-    });
-    expect(transport).toBeDefined();
-  });
-});

@@ -251,8 +251,8 @@ describe('initial state', () => {
     ];
     const spec = mergeSpecs([], sessions);
 
-    // Home is observed most frequently (appears in all transitions)
-    expect(spec.initialState).toBeDefined();
+    // Home is the first screen in all 3 sessions
+    expect(spec.initialState).toBe('Home');
   });
 
   it('handles empty routes and sessions', () => {

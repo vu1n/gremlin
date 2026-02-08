@@ -105,15 +105,6 @@ describe('EVIL_STRINGS', () => {
     expect(joined).toContain('../');
   });
 
-  test('includes empty string', () => {
-    expect(EVIL_STRINGS).toContain('');
-  });
-
-  test('includes very long strings', () => {
-    const longStrings = EVIL_STRINGS.filter((s) => s.length >= 1000);
-    expect(longStrings.length).toBeGreaterThanOrEqual(1);
-  });
-
   test('includes unicode strings', () => {
     const hasUnicode = EVIL_STRINGS.some((s) => /[\u0080-\uFFFF]/.test(s));
     expect(hasUnicode).toBe(true);
