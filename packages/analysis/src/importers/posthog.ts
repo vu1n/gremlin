@@ -136,6 +136,7 @@ type SerializedNode = RrwebSerializedNode;
 export class PostHogImporter {
   private config: Required<PostHogConfig>;
   private nodeMap: Map<number, SerializedNode> = new Map();
+  private scrollPositions: Map<number, { x: number; y: number }> = new Map();
 
   constructor(config: PostHogConfig) {
     this.config = {
@@ -218,6 +219,7 @@ export class PostHogImporter {
   convertToGremlinSession(recording: PostHogRecording): GremlinSession {
     // Reset node map for this recording
     this.nodeMap.clear();
+    this.scrollPositions.clear();
 
     // Extract metadata from first events
     const metaEvent = recording.snapshot_data.find(
@@ -388,12 +390,18 @@ export class PostHogImporter {
                 data.scrollData.id,
                 session
               );
+              // scrollData.x/y are absolute positions — compute deltas
+              const scrollNodeId = data.scrollData.id;
+              const prevScroll = this.scrollPositions.get(scrollNodeId) ?? { x: 0, y: 0 };
+              const scrollDeltaX = data.scrollData.x - prevScroll.x;
+              const scrollDeltaY = data.scrollData.y - prevScroll.y;
+              this.scrollPositions.set(scrollNodeId, { x: data.scrollData.x, y: data.scrollData.y });
               events.push({
                 type: EventTypeEnum.SCROLL,
                 data: {
                   kind: 'scroll',
-                  deltaX: data.scrollData.x,
-                  deltaY: data.scrollData.y,
+                  deltaX: scrollDeltaX,
+                  deltaY: scrollDeltaY,
                   containerIndex,
                 } as ScrollEvent,
               });

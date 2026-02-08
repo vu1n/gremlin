@@ -165,15 +165,26 @@ async function loadSessions(dir: string): Promise<GremlinSession[]> {
 export function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
   const lines: string[] = [];
 
-  for (let i = 0; i < sessions.length; i++) {
-    const session = sessions[i];
-    const events = session.events || [];
+  // Limit sessions and events to stay within AI provider token limits
+  const MAX_SESSIONS = 10;
+  const MAX_EVENTS_PER_SESSION = 200;
+  const limitedSessions = sessions.slice(0, MAX_SESSIONS);
+
+  if (sessions.length > MAX_SESSIONS) {
+    lines.push(`> Note: Showing ${MAX_SESSIONS} of ${sessions.length} sessions (most recent).`);
+    lines.push('');
+  }
+
+  for (let i = 0; i < limitedSessions.length; i++) {
+    const session = limitedSessions[i];
+    const allEvents = session.events || [];
+    const events = allEvents.slice(0, MAX_EVENTS_PER_SESSION);
     const duration = events.length > 0 ? events.reduce((sum, e) => sum + (e.dt || 0), 0) / 1000 : 0;
 
     lines.push(`### Session ${i + 1}`);
     lines.push(`- Platform: ${session.header.device?.platform || 'unknown'}`);
     lines.push(`- App: ${session.header.app?.name || 'unknown'} v${session.header.app?.version || '?'}`);
-    lines.push(`- Events: ${events.length}`);
+    lines.push(`- Events: ${events.length}${allEvents.length > MAX_EVENTS_PER_SESSION ? ` (of ${allEvents.length}, truncated)` : ''}`);
     lines.push(`- Duration: ${duration.toFixed(1)}s`);
 
     // Session-level performance summary

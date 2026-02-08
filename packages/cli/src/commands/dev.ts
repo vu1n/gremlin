@@ -89,7 +89,16 @@ export async function dev(options: DevOptions): Promise<void> {
   const sessionLocks = new Map<string, Promise<unknown>>();
   function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
     const prev = sessionLocks.get(sessionId) ?? Promise.resolve();
-    const result = prev.catch(() => {}).then(() => fn());
+    const result = prev.catch(() => {}).then(async () => {
+      try {
+        return await fn();
+      } finally {
+        // Clean up lock entry after this chain resolves
+        if (sessionLocks.get(sessionId) === result) {
+          sessionLocks.delete(sessionId);
+        }
+      }
+    });
     sessionLocks.set(sessionId, result);
     return result;
   }
@@ -282,12 +291,18 @@ export async function dev(options: DevOptions): Promise<void> {
       // List sessions
       if (url.pathname === '/sessions' && req.method === 'GET') {
         try {
+          const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+          const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
           const files = await import('fs').then((fs) =>
             fs.readdirSync(output).filter((f: string) => f.endsWith('.json'))
           );
 
+          // Sort by filename (contains timestamp) desc, then paginate
+          const sortedFiles = files.sort().reverse().slice(offset, offset + limit);
+
           const sessions = await Promise.all(
-            files.map(async (file: string) => {
+            sortedFiles.map(async (file: string) => {
               const content = await Bun.file(join(output, file)).text();
               const session = JSON.parse(content);
               return {
@@ -299,11 +314,11 @@ export async function dev(options: DevOptions): Promise<void> {
             })
           );
 
-          return new Response(JSON.stringify(sessions), {
+          return new Response(JSON.stringify({ sessions, total: files.length, limit, offset }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         } catch (err) {
-          return new Response(JSON.stringify([]), {
+          return new Response(JSON.stringify({ sessions: [], total: 0 }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }

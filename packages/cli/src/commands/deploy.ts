@@ -247,7 +247,8 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
     containerId,
   };
 
-  if (output('deploy.docker', result, options)) return result;
+  // Redact API key in JSON output to prevent leaking secrets in CI logs
+  if (output('deploy.docker', { ...result, apiKey: apiKey.slice(0, 4) + '...' + apiKey.slice(-4) }, options)) return result;
 
   console.log('');
   console.log('  Gremlin Server (Docker)');

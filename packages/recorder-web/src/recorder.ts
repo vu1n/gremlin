@@ -150,8 +150,8 @@ export class GremlinRecorder extends BaseRecorder {
 
   /** Streaming transport for real-time event streaming */
   private streamingTransport: StreamingTransport | null = null;
-  private lastScrollX = 0;
-  private lastScrollY = 0;
+  private scrollPositions = new WeakMap<EventTarget, { x: number; y: number }>();
+  private documentScrollPos = { x: 0, y: 0 };
 
   constructor(config: RecorderConfig) {
     super({
@@ -619,20 +619,35 @@ export class GremlinRecorder extends BaseRecorder {
     const target = event.target;
     let absX = 0;
     let absY = 0;
+    let isDocument = false;
 
     if (target === document || target === document.documentElement) {
       absY = window.scrollY;
       absX = window.scrollX;
+      isDocument = true;
     } else if (target instanceof HTMLElement) {
       absY = target.scrollTop;
       absX = target.scrollLeft;
     }
 
-    // Compute delta from last known position
-    const deltaX = absX - this.lastScrollX;
-    const deltaY = absY - this.lastScrollY;
-    this.lastScrollX = absX;
-    this.lastScrollY = absY;
+    // Compute delta from last known position for THIS specific target
+    let prev: { x: number; y: number };
+    if (isDocument) {
+      prev = this.documentScrollPos;
+    } else if (target) {
+      prev = this.scrollPositions.get(target) ?? { x: 0, y: 0 };
+    } else {
+      prev = { x: 0, y: 0 };
+    }
+
+    const deltaX = absX - prev.x;
+    const deltaY = absY - prev.y;
+
+    if (isDocument) {
+      this.documentScrollPos = { x: absX, y: absY };
+    } else if (target) {
+      this.scrollPositions.set(target, { x: absX, y: absY });
+    }
 
     // Use base class recordScroll - batching handled by EventBatcher
     this.recordScroll(deltaX, deltaY);
@@ -982,12 +997,23 @@ export class GremlinRecorder extends BaseRecorder {
     try {
       const state = {
         session,
+        rrwebEvents: this.rrwebEvents,
         navigationStartTime: this.navigationStartTime,
         isRecording: this.isRecording(),
       };
       sessionStorage.setItem(this.webConfig.storageKey, JSON.stringify(state));
     } catch (e) {
-      console.warn('GremlinRecorder: Failed to save session to storage', e);
+      // sessionStorage may be full — try without rrweb events as fallback
+      try {
+        const fallbackState = {
+          session,
+          navigationStartTime: this.navigationStartTime,
+          isRecording: this.isRecording(),
+        };
+        sessionStorage.setItem(this.webConfig.storageKey, JSON.stringify(fallbackState));
+      } catch {
+        console.warn('GremlinRecorder: Failed to save session to storage', e);
+      }
     }
   }
 
@@ -1001,7 +1027,7 @@ export class GremlinRecorder extends BaseRecorder {
 
       // Restore session state via protected access
       // This is a special case for persistence - normally use start()
-      this.restoreSession(state.session);
+      this.restoreSession(state.session, state.rrwebEvents);
       this.navigationStartTime = state.navigationStartTime || Date.now();
 
       return true;
@@ -1015,7 +1041,7 @@ export class GremlinRecorder extends BaseRecorder {
    * Restore a session from persistence.
    * Protected method to allow subclasses to restore state.
    */
-  protected restoreSession(session: GremlinSession): void {
+  protected restoreSession(session: GremlinSession, rrwebEventsData?: unknown[]): void {
     // Access protected members from base class
     (this as any).session = session;
     (this as any).recording = true;
@@ -1027,6 +1053,11 @@ export class GremlinRecorder extends BaseRecorder {
       const key = el.testId || el.accessibilityLabel || el.text || 'unknown';
       (this as any).elementMap.set(key, idx);
     });
+
+    // Restore rrweb events if available
+    if (Array.isArray(rrwebEventsData)) {
+      this.rrwebEvents = rrwebEventsData as eventWithTime[];
+    }
   }
 
   /**

@@ -12,13 +12,21 @@ function mockEvent(pageX: number, pageY: number, target?: any) {
   } as any;
 }
 
+/** Short delay for deferred tap tests */
+const TAP_DELAY = 20;
+
 function collectGestures(config?: Partial<{ minSwipeDistance: number; longPressDuration: number; doubleTapDelay: number }>) {
   const gestures: GestureEvent[] = [];
   const interceptor = new GestureInterceptor({
     onGesture: (g) => gestures.push(g),
+    doubleTapDelay: TAP_DELAY,
     ...config,
   });
   return { interceptor, gestures };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 // ============================================================================
@@ -26,16 +34,15 @@ function collectGestures(config?: Partial<{ minSwipeDistance: number; longPressD
 // ============================================================================
 
 describe('GestureInterceptor', () => {
-  beforeEach(() => {
-    // Use fake timers for long press / double tap tests
-  });
-
   describe('tap detection', () => {
-    it('emits a tap for a quick touch-start/touch-end at same position', () => {
+    it('emits a tap for a quick touch-start/touch-end at same position', async () => {
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(100, 200));
       interceptor.handleTouchEnd(mockEvent(100, 200));
+
+      // Tap is deferred — wait for doubleTapDelay to elapse
+      await wait(TAP_DELAY + 10);
 
       expect(gestures).toHaveLength(1);
       expect(gestures[0].type).toBe('tap');
@@ -43,51 +50,61 @@ describe('GestureInterceptor', () => {
       expect(gestures[0].y).toBe(200);
     });
 
-    it('rounds coordinates to integers', () => {
+    it('rounds coordinates to integers', async () => {
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(100.7, 200.3));
       interceptor.handleTouchEnd(mockEvent(100.7, 200.3));
 
+      await wait(TAP_DELAY + 10);
+
       expect(gestures[0].x).toBe(101);
       expect(gestures[0].y).toBe(200);
     });
 
-    it('includes target from the event', () => {
+    it('includes target from the event', async () => {
       const target = { _nativeTag: 42 };
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(50, 50, target));
       interceptor.handleTouchEnd(mockEvent(50, 50, target));
 
+      await wait(TAP_DELAY + 10);
+
       expect(gestures[0].target).toBe(target);
     });
 
-    it('does not emit tap if finger moved more than 10px', () => {
+    it('does not emit tap if finger moved more than 10px', async () => {
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(115, 100)); // 15px movement
 
+      await wait(TAP_DELAY + 10);
+
       expect(gestures).toHaveLength(0);
     });
 
-    it('emits tap if finger moved less than 10px', () => {
+    it('emits tap if finger moved less than 10px', async () => {
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(105, 103)); // ~5.8px
 
+      await wait(TAP_DELAY + 10);
+
       expect(gestures).toHaveLength(1);
       expect(gestures[0].type).toBe('tap');
     });
 
-    it('has a timestamp on tap events', () => {
+    it('has a timestamp on tap events', async () => {
       const { interceptor, gestures } = collectGestures();
       const before = Date.now();
 
       interceptor.handleTouchStart(mockEvent(50, 50));
       interceptor.handleTouchEnd(mockEvent(50, 50));
+
+      await wait(TAP_DELAY + 10);
 
       const after = Date.now();
       expect(gestures[0].timestamp).toBeGreaterThanOrEqual(before);
@@ -100,42 +117,45 @@ describe('GestureInterceptor', () => {
   // ============================================================================
 
   describe('double tap detection', () => {
-    it('emits tap then double_tap for two quick taps at same position', () => {
+    it('emits only double_tap for two quick taps at same position', () => {
       const { interceptor, gestures } = collectGestures({ doubleTapDelay: 500 });
 
       // First tap
+      interceptor.handleTouchStart(mockEvent(100, 100));
+      interceptor.handleTouchEnd(mockEvent(100, 100));
+
+      // The single tap is deferred — not emitted yet
+      expect(gestures).toHaveLength(0);
+
+      // Second tap within doubleTapDelay cancels the pending single tap
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(100, 100));
 
       expect(gestures).toHaveLength(1);
-      expect(gestures[0].type).toBe('tap');
-
-      // Second tap within doubleTapDelay
-      interceptor.handleTouchStart(mockEvent(100, 100));
-      interceptor.handleTouchEnd(mockEvent(100, 100));
-
-      expect(gestures).toHaveLength(2);
-      expect(gestures[1].type).toBe('double_tap');
+      expect(gestures[0].type).toBe('double_tap');
     });
 
-    it('emits two separate taps if second tap is too far away', () => {
-      const { interceptor, gestures } = collectGestures({ doubleTapDelay: 500 });
+    it('emits two separate taps if second tap is too far away', async () => {
+      const { interceptor, gestures } = collectGestures({ doubleTapDelay: TAP_DELAY });
 
       // First tap
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(100, 100));
 
-      // Second tap far away (>50px)
+      // Second tap far away (>50px) — not a double tap
       interceptor.handleTouchStart(mockEvent(200, 200));
       interceptor.handleTouchEnd(mockEvent(200, 200));
+
+      // Wait for both deferred taps to fire
+      await wait(TAP_DELAY + 10);
 
       expect(gestures).toHaveLength(2);
       expect(gestures[0].type).toBe('tap');
       expect(gestures[1].type).toBe('tap');
     });
 
-    it('resets after double tap — third tap is a new single tap', () => {
-      const { interceptor, gestures } = collectGestures({ doubleTapDelay: 500 });
+    it('resets after double tap — third tap is a new single tap', async () => {
+      const { interceptor, gestures } = collectGestures({ doubleTapDelay: TAP_DELAY });
 
       // First tap
       interceptor.handleTouchStart(mockEvent(100, 100));
@@ -149,10 +169,11 @@ describe('GestureInterceptor', () => {
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(100, 100));
 
-      expect(gestures).toHaveLength(3);
-      expect(gestures[0].type).toBe('tap');
-      expect(gestures[1].type).toBe('double_tap');
-      expect(gestures[2].type).toBe('tap');
+      await wait(TAP_DELAY + 10);
+
+      expect(gestures).toHaveLength(2);
+      expect(gestures[0].type).toBe('double_tap');
+      expect(gestures[1].type).toBe('tap');
     });
 
     it('double tap coordinates are from the second tap', () => {
@@ -164,9 +185,9 @@ describe('GestureInterceptor', () => {
       interceptor.handleTouchStart(mockEvent(110, 110));
       interceptor.handleTouchEnd(mockEvent(110, 110));
 
-      expect(gestures[1].type).toBe('double_tap');
-      expect(gestures[1].x).toBe(110);
-      expect(gestures[1].y).toBe(110);
+      expect(gestures[0].type).toBe('double_tap');
+      expect(gestures[0].x).toBe(110);
+      expect(gestures[0].y).toBe(110);
     });
   });
 
@@ -190,6 +211,8 @@ describe('GestureInterceptor', () => {
 
       // End the touch — should NOT emit a tap (already fired long press)
       interceptor.handleTouchEnd(mockEvent(100, 200));
+
+      await wait(TAP_DELAY + 10);
       expect(gestures).toHaveLength(1); // Still 1, no tap
     });
 
@@ -366,7 +389,7 @@ describe('GestureInterceptor', () => {
       expect(gestures).toHaveLength(0);
     });
 
-    it('clears touch state after end', () => {
+    it('clears touch state after end', async () => {
       const { interceptor, gestures } = collectGestures();
 
       interceptor.handleTouchStart(mockEvent(100, 100));
@@ -374,6 +397,8 @@ describe('GestureInterceptor', () => {
 
       // Second end without start should be no-op
       interceptor.handleTouchEnd(mockEvent(100, 100));
+
+      await wait(TAP_DELAY + 10);
       expect(gestures).toHaveLength(1); // Only the first tap
     });
   });
@@ -395,12 +420,14 @@ describe('GestureInterceptor', () => {
       expect(gestures).toHaveLength(0);
     });
 
-    it('clears lastTap so next tap is not a double tap', () => {
-      const { interceptor, gestures } = collectGestures({ doubleTapDelay: 500 });
+    it('clears lastTap so next tap is not a double tap', async () => {
+      const { interceptor, gestures } = collectGestures({ doubleTapDelay: TAP_DELAY });
 
       // First tap
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(100, 100));
+
+      await wait(TAP_DELAY + 10);
       expect(gestures[0].type).toBe('tap');
 
       interceptor.cleanup();
@@ -408,6 +435,8 @@ describe('GestureInterceptor', () => {
       // Second tap after cleanup — should be a new single tap, not double_tap
       interceptor.handleTouchStart(mockEvent(100, 100));
       interceptor.handleTouchEnd(mockEvent(100, 100));
+
+      await wait(TAP_DELAY + 10);
 
       expect(gestures).toHaveLength(2);
       expect(gestures[1].type).toBe('tap');
@@ -429,12 +458,14 @@ describe('GestureInterceptor', () => {
       expect(handlers.onTouchCancel).toBe(interceptor.handleTouchCancel);
     });
 
-    it('handlers work when called through the wrapper', () => {
+    it('handlers work when called through the wrapper', async () => {
       const { interceptor, gestures } = collectGestures();
       const handlers = createGestureHandlers(interceptor);
 
       handlers.onTouchStart(mockEvent(50, 50));
       handlers.onTouchEnd(mockEvent(50, 50));
+
+      await wait(TAP_DELAY + 10);
 
       expect(gestures).toHaveLength(1);
       expect(gestures[0].type).toBe('tap');

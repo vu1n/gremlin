@@ -106,8 +106,11 @@ export class NavigationListener {
     // Determine navigation type
     const navType = this.determineNavigationType(previousRoute, route);
 
-    // Add to history
+    // Add to history (cap at 100 entries to prevent unbounded growth)
     this.routeHistory.push(route.name);
+    if (this.routeHistory.length > 100) {
+      this.routeHistory.shift();
+    }
 
     // Mask params if configured
     const params = this.config.maskParams

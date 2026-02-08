@@ -2,7 +2,7 @@
  * R2 storage layer for Gremlin sessions
  */
 
-import type { GremlinSession, PerformanceSample } from '@gremlin/session';
+import type { GremlinSession, PerformanceSample, SessionPerformance } from '@gremlin/session';
 import type { Env, SessionListResult, SessionSummary } from './types';
 import { createSessionSummary } from './types';
 import type {
@@ -38,7 +38,7 @@ export async function storeSession(
   const sessionBytes = new TextEncoder().encode(sessionJson);
 
   // Create metadata for efficient querying
-  const metadata = {
+  const metadata: Record<string, string> = {
     sessionId,
     startTime: session.header.startTime.toString(),
     endTime: session.header.endTime?.toString() || '',
@@ -50,6 +50,11 @@ export async function storeSession(
     uploadedAt: Date.now().toString(),
     schemaVersion: session.header.schemaVersion.toString(),
   };
+
+  // Store compact performance summary in metadata for efficient listing
+  if (session.performance) {
+    metadata.performance = JSON.stringify(session.performance);
+  }
 
   // Store in R2 with the session ID as the key
   await env.SESSIONS.put(`sessions/${sessionId}.json`, sessionBytes, {
@@ -134,18 +139,21 @@ export async function listSessions(
         screenshotCount: parseInt(metadata.screenshotCount || '0', 10),
         size: object.size,
         uploadedAt: parseInt(metadata.uploadedAt || '0', 10),
+        performance: parsePerformanceMetadata(metadata.performance),
       };
 
       sessions.push(summary);
     }
 
-    // Sort by upload time (most recent first)
+    // R2 returns keys in lexicographic order; sort by upload time within this page
+    // Note: cross-page ordering relies on R2 cursor-based pagination
     sessions.sort((a, b) => b.uploadedAt - a.uploadedAt);
 
     return {
       sessions,
       cursor: listed.truncated ? listed.cursor : undefined,
       hasMore: listed.truncated,
+      totalCount: sessions.length,
     };
   } catch (error) {
     console.error('Error listing sessions:', error);
@@ -214,10 +222,20 @@ export async function getSessionMetadata(
       screenshotCount: parseInt(metadata.screenshotCount || '0', 10),
       size: object.size,
       uploadedAt: parseInt(metadata.uploadedAt || '0', 10),
+      performance: parsePerformanceMetadata(metadata.performance),
     };
   } catch (error) {
     console.error('Error getting session metadata:', error);
     return null;
+  }
+}
+
+function parsePerformanceMetadata(raw?: string): SessionPerformance | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as SessionPerformance;
+  } catch {
+    return undefined;
   }
 }
 
@@ -245,29 +263,43 @@ function getPerfValueFromSummary(s: SessionSummary, key: PerfSortKey): number | 
 }
 
 /**
- * Load all sessions from R2 and return summaries with performance data.
- * Note: R2 custom metadata doesn't store perf data, so we must fetch full sessions.
+ * Load all session summaries from R2 using only metadata (no full session downloads).
+ * Performance data is stored in custom metadata during storeSession.
  */
-async function loadAllSessionsWithPerf(env: Env): Promise<SessionSummary[]> {
+async function loadAllSessionSummaries(env: Env): Promise<SessionSummary[]> {
   const summaries: SessionSummary[] = [];
   let cursor: string | undefined;
 
-  // Paginate through all R2 objects
+  // Paginate through all R2 objects using metadata only
   do {
     const listed = await env.SESSIONS.list({
       prefix: 'sessions/',
-      limit: 100,
+      limit: 1000,
       cursor,
     });
 
     for (const obj of listed.objects) {
-      const id = obj.key.replace('sessions/', '').replace('.json', '');
-      const full = await env.SESSIONS.get(obj.key);
-      if (!full) continue;
+      const metadata = obj.customMetadata;
+      if (!metadata) continue;
 
-      const session = JSON.parse(await full.text()) as GremlinSession;
-      const uploadedAt = parseInt(obj.customMetadata?.uploadedAt || '0', 10);
-      summaries.push(createSessionSummary(id, session, obj.size, uploadedAt));
+      const id = obj.key.replace('sessions/', '').replace('.json', '');
+      summaries.push({
+        id,
+        startTime: parseInt(metadata.startTime || '0', 10),
+        endTime: metadata.endTime ? parseInt(metadata.endTime, 10) : undefined,
+        duration:
+          metadata.endTime && metadata.startTime
+            ? parseInt(metadata.endTime, 10) - parseInt(metadata.startTime, 10)
+            : undefined,
+        platform: (metadata.platform || 'web') as 'web' | 'ios' | 'android',
+        appName: metadata.appName || 'unknown',
+        appVersion: metadata.appVersion || 'unknown',
+        eventCount: parseInt(metadata.eventCount || '0', 10),
+        screenshotCount: parseInt(metadata.screenshotCount || '0', 10),
+        size: obj.size,
+        uploadedAt: parseInt(metadata.uploadedAt || '0', 10),
+        performance: parsePerformanceMetadata(metadata.performance),
+      });
     }
 
     cursor = listed.truncated ? listed.cursor : undefined;
@@ -280,7 +312,7 @@ export async function listSessionsWithPerf(
   env: Env,
   opts: PerfQueryOptions
 ): Promise<SessionListResult> {
-  let summaries = await loadAllSessionsWithPerf(env);
+  let summaries = await loadAllSessionSummaries(env);
 
   // Apply filters
   if (opts.filters && opts.filters.length > 0) {
@@ -348,7 +380,7 @@ function aggregateMetric(values: number[]): { median: number; p75: number; p95: 
 export async function getPerformanceAggregation(
   env: Env
 ): Promise<PerformanceAggregation> {
-  const summaries = await loadAllSessionsWithPerf(env);
+  const summaries = await loadAllSessionSummaries(env);
 
   const lcpVals: number[] = [];
   const clsVals: number[] = [];

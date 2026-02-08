@@ -203,25 +203,29 @@ function extractTextContent(target: any): string | undefined {
  * Measure element bounds using UIManager
  */
 export function measureElement(target: any): Promise<ViewMeasurement | null> {
-  return new Promise((resolve) => {
-    try {
-      const handle = findNodeHandle(target);
-      if (!handle) {
-        resolve(null);
-        return;
-      }
-
-      UIManager.measure(
-        handle,
-        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-          resolve({ x, y, width, height, pageX, pageY });
+  return Promise.race([
+    new Promise<ViewMeasurement | null>((resolve) => {
+      try {
+        const handle = findNodeHandle(target);
+        if (!handle) {
+          resolve(null);
+          return;
         }
-      );
-    } catch (error) {
-      console.warn('Failed to measure element:', error);
-      resolve(null);
-    }
-  });
+
+        UIManager.measure(
+          handle,
+          (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+            resolve({ x, y, width, height, pageX, pageY });
+          }
+        );
+      } catch (error) {
+        console.warn('Failed to measure element:', error);
+        resolve(null);
+      }
+    }),
+    // Timeout if UIManager.measure callback never fires (e.g., unmounted view)
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+  ]);
 }
 
 /**

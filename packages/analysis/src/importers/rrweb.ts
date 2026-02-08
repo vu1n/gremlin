@@ -242,6 +242,7 @@ export interface RrwebImportOptions {
  */
 export class RrwebImporter {
   private nodeMap: Map<number, SerializedNode> = new Map();
+  private scrollPositions: Map<number, { x: number; y: number }> = new Map();
   private options: Required<RrwebImportOptions>;
 
   constructor(options: RrwebImportOptions = {}) {
@@ -258,8 +259,9 @@ export class RrwebImporter {
    * Import rrweb recording and convert to GremlinSession
    */
   importRecording(events: RrwebEvent[]): GremlinSession {
-    // Reset node map
+    // Reset state
     this.nodeMap.clear();
+    this.scrollPositions.clear();
 
     // Sort events by timestamp
     const sortedEvents = [...events].sort((a, b) => a.timestamp - b.timestamp);
@@ -515,13 +517,20 @@ export class RrwebImporter {
 
     const containerIndex = this.getOrCreateElement(data.scrollData.id, session);
 
+    // rrweb scrollData.x/y are absolute positions — compute deltas
+    const nodeId = data.scrollData.id;
+    const prev = this.scrollPositions.get(nodeId) ?? { x: 0, y: 0 };
+    const deltaX = data.scrollData.x - prev.x;
+    const deltaY = data.scrollData.y - prev.y;
+    this.scrollPositions.set(nodeId, { x: data.scrollData.x, y: data.scrollData.y });
+
     return [
       {
         type: EventTypeEnum.SCROLL,
         data: {
           kind: 'scroll',
-          deltaX: data.scrollData.x,
-          deltaY: data.scrollData.y,
+          deltaX,
+          deltaY,
           containerIndex,
         } as ScrollEvent,
       },

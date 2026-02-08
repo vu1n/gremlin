@@ -139,30 +139,44 @@ export class StreamingTransport {
     }
   }
 
+  private flushing = false;
+
   /**
    * Flush pending events to server.
    */
   flush(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
+    if (this.flushing) return; // Prevent concurrent flushes
+
+    // Snapshot what we're sending but don't clear yet
+    const events = this.pendingEvents;
+    const rrwebEvents = this.pendingRrwebEvents;
+    const eventCount = events.length;
+    const rrwebCount = rrwebEvents.length;
 
     const payload = {
       sessionId: this.sessionId,
-      events: this.pendingEvents,
-      rrwebEvents: this.pendingRrwebEvents,
+      events,
+      rrwebEvents,
     };
 
-    // Clear pending before async send (prevents duplicate sends)
-    const eventCount = this.pendingEvents.length;
-    const rrwebCount = this.pendingRrwebEvents.length;
+    // Replace arrays so new events go to fresh buffers
     this.pendingEvents = [];
     this.pendingRrwebEvents = [];
+    this.flushing = true;
 
-    // Send async (don't await - fire and forget)
+    // Send async — restore events on failure
     this.sendBatch(payload).then((success) => {
+      this.flushing = false;
+      if (!success) {
+        // Prepend failed events back so they're retried on next flush
+        this.pendingEvents = [...events, ...this.pendingEvents];
+        this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
+      }
       if (this.config.debug) {
         console.log(
-          `[StreamingTransport] Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'failed'}`
+          `[StreamingTransport] Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'queued for retry'}`
         );
       }
     });

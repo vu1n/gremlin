@@ -4,6 +4,7 @@
  * Route handlers are shared with the CF Workers server via @gremlin/server-shared.
  */
 
+import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
@@ -90,7 +91,9 @@ export function createApp(config: ServerConfig): Hono {
       );
     }
 
-    if (apiKey !== config.apiKey) {
+    const a = Buffer.from(apiKey);
+    const b = Buffer.from(config.apiKey);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       return c.json(
         {
           error: {

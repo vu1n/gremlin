@@ -4,7 +4,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
 import type { GremlinSession } from '@gremlin/session';
 
 // ============================================================================
@@ -50,17 +49,20 @@ function errorResult(message: string): { content: { type: 'text'; text: string }
   };
 }
 
-function runCliCommand(args: string): string {
+async function runCliCommand(args: string): Promise<string> {
   try {
-    const result = execSync(`bun run packages/cli/src/index.ts ${args} --json`, {
-      encoding: 'utf-8',
+    const proc = Bun.spawn(['bun', 'run', 'packages/cli/src/index.ts', ...args.split(/\s+/), '--json'], {
       cwd,
-      timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     });
-    return result;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+    return stdout || stderr || (exitCode === 0 ? '' : 'Command failed');
   } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string };
-    return e.stdout || e.stderr || 'Command failed';
+    const e = err as { message?: string };
+    return e.message || 'Command failed';
   }
 }
 
@@ -548,7 +550,7 @@ server.tool(
     if (playwright) args.push('--playwright');
     if (maestro) args.push('--maestro');
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -572,7 +574,7 @@ server.tool(
     const args: string[] = ['run', '--all'];
     if (testsDir) args.push(`--tests-dir ${testsDir}`);
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -666,7 +668,7 @@ server.tool(
     if (provider) args.push(`--provider ${provider}`);
     if (focus) args.push(`--focus ${focus}`);
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -694,7 +696,7 @@ server.tool(
     if (framework) args.push(`--framework ${framework}`);
     if (skipInstall) args.push('--skip-install');
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -833,7 +835,7 @@ server.tool(
     if (margin) args.push(`--margin ${margin}`);
     if (update) args.push('--update');
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -857,7 +859,7 @@ server.tool(
     const args: string[] = ['generate', '--perf'];
     if (baseUrl) args.push(`--base-url ${baseUrl}`);
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -878,7 +880,7 @@ server.tool(
   async () => {
     const args: string[] = ['run', '--perf'];
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -904,7 +906,7 @@ server.tool(
     if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
     if (since) args.push(`--since ${since}`);
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));
@@ -928,7 +930,7 @@ server.tool(
     const args: string[] = ['generate', '--errors'];
     if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
 
-    const result = runCliCommand(args.join(' '));
+    const result = await runCliCommand(args.join(' '));
 
     try {
       return textResult(JSON.parse(result));

@@ -37,6 +37,7 @@ export interface GestureInterceptorConfig {
 export class GestureInterceptor {
   private config: Required<GestureInterceptorConfig>;
   private lastTap: { x: number; y: number; timestamp: number } | null = null;
+  private pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
   private touchStart: TouchData | null = null;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private isLongPress = false;
@@ -140,6 +141,7 @@ export class GestureInterceptor {
    */
   public cleanup(): void {
     this.cancelLongPress();
+    this.cancelPendingTap();
     this.touchStart = null;
     this.lastTap = null;
   }
@@ -157,7 +159,8 @@ export class GestureInterceptor {
       );
 
       if (timeSinceLastTap < this.config.doubleTapDelay && distance < 50) {
-        // Double tap detected
+        // Double tap detected — cancel the pending single tap
+        this.cancelPendingTap();
         this.config.onGesture({
           type: 'double_tap',
           x: Math.round(x),
@@ -168,26 +171,40 @@ export class GestureInterceptor {
         this.lastTap = null; // Reset to prevent triple tap
         return;
       }
+
+      // Not a double-tap — flush the pending first tap immediately
+      this.flushPendingTap();
     }
 
-    // Single tap
-    this.config.onGesture({
-      type: 'tap',
-      x: Math.round(x),
-      y: Math.round(y),
-      timestamp,
-      target,
-    });
-
-    // Store for potential double tap
+    // Store for potential double tap and defer the single tap emission
     this.lastTap = { x, y, timestamp };
+    this.cancelPendingTap();
 
-    // Clear last tap after delay
-    setTimeout(() => {
-      if (this.lastTap && this.lastTap.timestamp === timestamp) {
-        this.lastTap = null;
-      }
+    this.pendingTapTimer = setTimeout(() => {
+      this.pendingTapTimer = null;
+      this.config.onGesture({
+        type: 'tap',
+        x: Math.round(x),
+        y: Math.round(y),
+        timestamp,
+        target,
+      });
+      this.lastTap = null;
     }, this.config.doubleTapDelay);
+  }
+
+  private flushPendingTap(): void {
+    if (this.pendingTapTimer && this.lastTap) {
+      clearTimeout(this.pendingTapTimer);
+      this.pendingTapTimer = null;
+      this.config.onGesture({
+        type: 'tap',
+        x: Math.round(this.lastTap.x),
+        y: Math.round(this.lastTap.y),
+        timestamp: this.lastTap.timestamp,
+      });
+      this.lastTap = null;
+    }
   }
 
   private handleLongPress(): void {
@@ -240,6 +257,13 @@ export class GestureInterceptor {
       return deltaX > 0 ? 'right' : 'left';
     } else {
       return deltaY > 0 ? 'down' : 'up';
+    }
+  }
+
+  private cancelPendingTap(): void {
+    if (this.pendingTapTimer) {
+      clearTimeout(this.pendingTapTimer);
+      this.pendingTapTimer = null;
     }
   }
 
