@@ -136,6 +136,8 @@ export class PerformanceMonitor {
 
     if (this.config.trackJSLag) {
       sample.jsThreadLag = Math.round(this.maxLagSinceLastSample);
+      // Reset so subsequent calls don't report stale lag values
+      this.maxLagSinceLastSample = 0;
     }
 
     if (this.config.trackMemory) {
@@ -257,10 +259,7 @@ export class PerformanceMonitor {
   private takeSample(): void {
     const sample = this.getCurrentSample();
 
-    // Reset max lag counter
-    this.maxLagSinceLastSample = 0;
-
-    // Emit sample
+    // Emit sample (getCurrentSample already resets maxLagSinceLastSample)
     this.config.onSample(sample);
   }
 }

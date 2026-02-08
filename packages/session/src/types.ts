@@ -456,17 +456,16 @@ export function getOrCreateElement(
   session: GremlinSession,
   element: Omit<ElementInfo, 'bounds'>
 ): number {
-  // Check if element already exists
-  const existing = session.elements.findIndex(
-    (e) =>
-      e.testId === element.testId &&
-      e.accessibilityLabel === element.accessibilityLabel &&
-      e.text === element.text &&
-      e.type === element.type
-  );
+  // Key-based dedup matching BaseRecorder.getOrCreateElement
+  const key = element.testId || element.accessibilityLabel || element.text;
 
-  if (existing !== -1) {
-    return existing;
+  if (key) {
+    const existing = session.elements.findIndex(
+      (e) => (e.testId || e.accessibilityLabel || e.text) === key
+    );
+    if (existing !== -1) {
+      return existing;
+    }
   }
 
   // Add new element

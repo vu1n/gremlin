@@ -62,6 +62,7 @@ export class GremlinRecorder extends BaseRecorder {
   private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
   private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
   private networkRequestCounter = 0;
+  private xhrMetadata = new WeakMap<XMLHttpRequest, { method: string; url: string }>();
 
   constructor(config: GremlinRecorderConfig) {
     super({
@@ -621,14 +622,14 @@ export class GremlinRecorder extends BaseRecorder {
       url: string | URL,
       ...rest: any[]
     ) {
-      (this as any).__gremlin_method = method;
-      (this as any).__gremlin_url = typeof url === 'string' ? url : url.href;
+      recorder.xhrMetadata.set(this, { method, url: typeof url === 'string' ? url : url.href });
       return recorder.originalXhrOpen!.apply(this, [method, url, ...rest] as any);
     };
 
     XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-      const method: string = (this as any).__gremlin_method ?? 'GET';
-      const url: string = (this as any).__gremlin_url ?? '';
+      const meta = recorder.xhrMetadata.get(this);
+      const method: string = meta?.method ?? 'GET';
+      const url: string = meta?.url ?? '';
 
       if (recorder.shouldIgnoreUrl(url)) {
         return recorder.originalXhrSend!.call(this, body);

@@ -110,6 +110,12 @@ export class GremlinReplayer {
     // For now, inject it dynamically
     this.injectPlayerStyles();
 
+    // Clear previous poll timer if reloading
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+
     // Clear container
     this.config.container.innerHTML = '';
 

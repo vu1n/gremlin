@@ -751,7 +751,7 @@ server.resource(
   'gremlin://sessions/{id}',
   { description: 'Read a session by ID' },
   async (uri) => {
-    const id = uri.pathname.split('/').pop() ?? '';
+    const id = uri.pathname.split('/').filter(Boolean).pop() ?? '';
     const sessionPath = gremlinPath('sessions', `${id}.json`);
     const content = readJsonFile<unknown>(sessionPath);
 

@@ -185,7 +185,7 @@ function generateReplayHtml(
 
   <script src="https://cdn.jsdelivr.net/npm/rrweb-player@2.0.0-alpha.13/dist/index.js"></script>
   <script>
-    const events = ${JSON.stringify(events)};
+    const events = ${JSON.stringify(events).replace(/<\//g, '<\\/')};
 
     const player = new rrwebPlayer({
       target: document.getElementById('player-container'),
@@ -524,7 +524,7 @@ function generateMobileReplayHtml(session: any, speed: number): string {
   </div>
 
   <script>
-    const session = ${JSON.stringify(session)};
+    const session = ${JSON.stringify(session).replace(/<\//g, '<\\/')};
     const events = session.events || [];
     const scale = ${scale};
     const speed = ${speed};
@@ -767,9 +767,11 @@ async function showTextReplay(session: any): Promise<void> {
   console.log('Event Timeline:');
   console.log('─'.repeat(50));
 
+  let elapsed = 0;
   let lastTime = 0;
   for (const event of events) {
-    const time = (event.dt || 0) / 1000;
+    elapsed += (event.dt || 0);
+    const time = elapsed / 1000;
     const timeDiff = time - lastTime;
     lastTime = time;
 

@@ -36,7 +36,7 @@ export interface GestureInterceptorConfig {
  */
 export class GestureInterceptor {
   private config: Required<GestureInterceptorConfig>;
-  private lastTap: { x: number; y: number; timestamp: number } | null = null;
+  private lastTap: { x: number; y: number; timestamp: number; target?: any } | null = null;
   private pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
   private touchStart: TouchData | null = null;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -177,7 +177,7 @@ export class GestureInterceptor {
     }
 
     // Store for potential double tap and defer the single tap emission
-    this.lastTap = { x, y, timestamp };
+    this.lastTap = { x, y, timestamp, target };
     this.cancelPendingTap();
 
     this.pendingTapTimer = setTimeout(() => {
@@ -202,6 +202,7 @@ export class GestureInterceptor {
         x: Math.round(this.lastTap.x),
         y: Math.round(this.lastTap.y),
         timestamp: this.lastTap.timestamp,
+        target: this.lastTap.target,
       });
       this.lastTap = null;
     }

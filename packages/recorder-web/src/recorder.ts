@@ -641,6 +641,8 @@ export class GremlinRecorder extends BaseRecorder {
     if (!this.isRecording()) return;
 
     const target = event.target;
+    if (!target) return;
+
     let absX = 0;
     let absY = 0;
     let isDocument = false;
@@ -1133,10 +1135,15 @@ export class GremlinRecorder extends BaseRecorder {
       this.startPerformanceSampling();
     }
 
+    // Start streaming transport if enabled
+    const session = this.getSession();
+    if (this.streamingTransport && session) {
+      this.streamingTransport.start(session.header.sessionId);
+    }
+
     // Record navigation event for the new page
     this.recordNavigation(document.title, 'push', undefined, window.location.href);
 
-    const session = this.getSession();
     console.log(`GremlinRecorder: Resumed session ${session?.header.sessionId} on ${window.location.pathname}`);
     return true;
   }

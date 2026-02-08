@@ -416,7 +416,7 @@ export function formatEvent(
       case 'tap':
       case 'double_tap':
       case 'long_press': {
-        const element = data.elementIndex !== undefined
+        const element = data.elementIndex !== undefined && data.elementIndex < session.elements.length
           ? session.elements[data.elementIndex]
           : null;
         const elementStr = element
@@ -432,7 +432,7 @@ export function formatEvent(
         return `${timeStr} SCROLL: deltaY=${data.deltaY}${perfSuffix}`;
 
       case 'input': {
-        const inputElement = data.elementIndex !== undefined
+        const inputElement = data.elementIndex !== undefined && data.elementIndex < session.elements.length
           ? session.elements[data.elementIndex]
           : null;
         const inputTarget = inputElement?.testId || inputElement?.accessibilityLabel || 'unknown';

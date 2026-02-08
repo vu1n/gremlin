@@ -264,8 +264,12 @@ export async function dev(options: DevOptions): Promise<void> {
                 header: {
                   sessionId,
                   startTime: Date.now(),
-                  device: { platform: 'web' },
-                  app: { name: 'unknown' },
+                  device: {
+                    platform: 'web',
+                    osVersion: 'unknown',
+                    screen: { width: 0, height: 0, pixelRatio: 1 },
+                  },
+                  app: { name: 'unknown', version: '0.0.0', identifier: 'unknown' },
                   schemaVersion: 1,
                 },
                 events: [],

@@ -203,29 +203,38 @@ function extractTextContent(target: any): string | undefined {
  * Measure element bounds using UIManager
  */
 export function measureElement(target: any): Promise<ViewMeasurement | null> {
-  return Promise.race([
-    new Promise<ViewMeasurement | null>((resolve) => {
-      try {
-        const handle = findNodeHandle(target);
-        if (!handle) {
-          resolve(null);
-          return;
-        }
+  let timeoutId: ReturnType<typeof setTimeout>;
+  let settled = false;
 
-        UIManager.measure(
-          handle,
-          (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-            resolve({ x, y, width, height, pageX, pageY });
-          }
-        );
-      } catch (error) {
-        console.warn('Failed to measure element:', error);
-        resolve(null);
-      }
-    }),
+  return new Promise<ViewMeasurement | null>((resolve) => {
+    const settle = (value: ViewMeasurement | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(value);
+    };
+
     // Timeout if UIManager.measure callback never fires (e.g., unmounted view)
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
-  ]);
+    timeoutId = setTimeout(() => settle(null), 500);
+
+    try {
+      const handle = findNodeHandle(target);
+      if (!handle) {
+        settle(null);
+        return;
+      }
+
+      UIManager.measure(
+        handle,
+        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+          settle({ x, y, width, height, pageX, pageY });
+        }
+      );
+    } catch (error) {
+      console.warn('Failed to measure element:', error);
+      settle(null);
+    }
+  });
 }
 
 /**

@@ -106,7 +106,7 @@ describe('getOrCreateElement', () => {
     expect(session.elements).toHaveLength(2);
   });
 
-  it('deduplicates by testId, accessibilityLabel, text, and type together', () => {
+  it('deduplicates by first matching key (testId > accessibilityLabel > text)', () => {
     const idx1 = getOrCreateElement(session, {
       testId: 'btn-1',
       accessibilityLabel: 'Login',
@@ -114,7 +114,7 @@ describe('getOrCreateElement', () => {
       type: 'button',
     });
 
-    // Same testId but different text => different element
+    // Same testId but different text => same element (key is testId)
     const idx2 = getOrCreateElement(session, {
       testId: 'btn-1',
       accessibilityLabel: 'Login',
@@ -123,7 +123,7 @@ describe('getOrCreateElement', () => {
     });
 
     expect(idx1).toBe(0);
-    expect(idx2).toBe(1);
+    expect(idx2).toBe(0);
   });
 
   it('treats same testId/label/text/type as duplicate', () => {
