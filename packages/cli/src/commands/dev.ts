@@ -84,6 +84,7 @@ export async function dev(options: DevOptions): Promise<void> {
   }
 
   let sessionCount = 0;
+  const knownSessionIds = new Set<string>();
 
   // Per-session lock to prevent read-modify-write races on concurrent appends
   const sessionLocks = new Map<string, Promise<unknown>>();
@@ -166,7 +167,10 @@ export async function dev(options: DevOptions): Promise<void> {
             );
           }
 
-          sessionCount++;
+          if (!knownSessionIds.has(session.header.sessionId)) {
+            knownSessionIds.add(session.header.sessionId);
+            sessionCount++;
+          }
 
           // Save session (atomic write)
           const sessionFile = join(output, `${session.header.sessionId}.json`);
@@ -235,6 +239,12 @@ export async function dev(options: DevOptions): Promise<void> {
           }
 
           const sessionFile = join(output, `${sessionId}.json`);
+
+          // Track session for count
+          if (!knownSessionIds.has(sessionId)) {
+            knownSessionIds.add(sessionId);
+            sessionCount++;
+          }
 
           // Lock per session to prevent concurrent read-modify-write races
           await withSessionLock(sessionId, async () => {

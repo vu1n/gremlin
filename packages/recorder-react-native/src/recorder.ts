@@ -324,6 +324,14 @@ export class GremlinRecorder extends BaseRecorder {
     // Call parent implementation (handles delta timestamps, session push, debug logging)
     super.addEventToSession(enrichedEvent);
 
+    // Queue event for transport batching
+    if (this.transport && this.session) {
+      const fullEvent = this.session.events[this.session.events.length - 1];
+      if (fullEvent) {
+        this.transport.queueEvent(fullEvent);
+      }
+    }
+
     // Emit to callback if configured
     if (this.rnConfig.onEvent && this.session) {
       const fullEvent = this.session.events[this.session.events.length - 1];

@@ -155,7 +155,7 @@ export class LocalTransport {
     rrwebEvents?: any[]
   ): Promise<TransportResult> {
     try {
-      const response = await fetch(`${this.config.endpoint}/session/batch`, {
+      const response = await fetch(`${this.config.endpoint}/session/append`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -10,7 +10,7 @@ import { EventTypeEnum } from './generated/events';
 import { ElementType } from './generated/elements';
 
 describe('@gremlin/proto', () => {
-  test('should encode and decode a session', () => {
+  test('should encode and decode a session', async () => {
     const session: GremlinSession = {
       header: {
         sessionId: 'test-123',
@@ -56,12 +56,12 @@ describe('@gremlin/proto', () => {
     };
 
     // Encode
-    const encoded = encodeSession(session);
+    const encoded = await encodeSession(session);
     expect(encoded).toBeInstanceOf(Uint8Array);
     expect(encoded.length).toBeGreaterThan(0);
 
     // Decode
-    const decoded = decodeSession(encoded);
+    const decoded = await decodeSession(encoded);
     expect(decoded.header!.sessionId).toBe('test-123');
     expect(decoded.header!.schemaVersion).toBe(1);
     expect(decoded.elements).toHaveLength(1);
@@ -70,7 +70,7 @@ describe('@gremlin/proto', () => {
     expect(decoded.events[0].type).toBe(EventTypeEnum.EVENT_TYPE_TAP);
   });
 
-  test('should achieve compression', () => {
+  test('should achieve compression', async () => {
     const session: GremlinSession = {
       header: {
         sessionId: 'test-compression',
@@ -108,14 +108,14 @@ describe('@gremlin/proto', () => {
       screenshots: [],
     };
 
-    const ratio = estimateCompressionRatio(session);
+    const ratio = await estimateCompressionRatio(session);
     console.log(`Compression ratio: ${ratio.toFixed(3)} (${(1 / ratio).toFixed(1)}x)`);
 
     // Proto should be significantly smaller than JSON
     expect(ratio).toBeLessThan(0.5); // At least 2x compression
   });
 
-  test('should handle all event types', () => {
+  test('should handle all event types', async () => {
     const session: GremlinSession = {
       header: {
         sessionId: 'test-events',
@@ -166,8 +166,8 @@ describe('@gremlin/proto', () => {
       screenshots: [],
     };
 
-    const encoded = encodeSession(session);
-    const decoded = decodeSession(encoded);
+    const encoded = await encodeSession(session);
+    const decoded = await decodeSession(encoded);
 
     expect(decoded.events).toHaveLength(4);
     expect(decoded.events[0].tap).toBeDefined();
@@ -176,7 +176,7 @@ describe('@gremlin/proto', () => {
     expect(decoded.events[3].error).toBeDefined();
   });
 
-  test('should handle optional fields', () => {
+  test('should handle optional fields', async () => {
     const session: GremlinSession = {
       header: {
         sessionId: 'test-optional',
@@ -214,8 +214,8 @@ describe('@gremlin/proto', () => {
       ],
     };
 
-    const encoded = encodeSession(session);
-    const decoded = decodeSession(encoded);
+    const encoded = await encodeSession(session);
+    const decoded = await decodeSession(encoded);
 
     expect(decoded.header!.endTime).toBeDefined();
     expect(decoded.header!.device!.model).toBe('Pixel 8');

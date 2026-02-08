@@ -22,9 +22,8 @@ import type { ElementInfo as ProtoElement } from './generated/elements';
 /**
  * Encode a GremlinSession to protobuf binary format
  */
-export function encodeSession(session: ProtoSession): Uint8Array {
-  // Import the generated encoder
-  const { GremlinSession } = require('./generated/session');
+export async function encodeSession(session: ProtoSession): Promise<Uint8Array> {
+  const { GremlinSession } = await import('./generated/session');
   const message = GremlinSession.fromPartial(session);
   return GremlinSession.encode(message).finish();
 }
@@ -32,8 +31,8 @@ export function encodeSession(session: ProtoSession): Uint8Array {
 /**
  * Decode a GremlinSession from protobuf binary format
  */
-export function decodeSession(data: Uint8Array): ProtoSession {
-  const { GremlinSession } = require('./generated/session');
+export async function decodeSession(data: Uint8Array): Promise<ProtoSession> {
+  const { GremlinSession } = await import('./generated/session');
   return GremlinSession.decode(data);
 }
 
@@ -41,8 +40,9 @@ export function decodeSession(data: Uint8Array): ProtoSession {
  * Calculate approximate compression ratio
  * Returns ratio of proto size to JSON size (lower is better)
  */
-export function estimateCompressionRatio(session: ProtoSession): number {
-  const protoSize = encodeSession(session).length;
+export async function estimateCompressionRatio(session: ProtoSession): Promise<number> {
+  const encoded = await encodeSession(session);
+  const protoSize = encoded.length;
   // Custom JSON stringify that handles BigInt
   const jsonSize = JSON.stringify(session, (_, value) =>
     typeof value === 'bigint' ? value.toString() : value

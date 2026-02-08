@@ -50,6 +50,7 @@ export class PerformanceMonitor {
   // JS thread lag tracking
   private lastInteractionTime = 0;
   private maxLagSinceLastSample = 0;
+  private lagTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Sample timer
   private sampleTimer: ReturnType<typeof setInterval> | null = null;
@@ -108,6 +109,12 @@ export class PerformanceMonitor {
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
+    }
+
+    // Stop JS lag tracking
+    if (this.lagTimer !== null) {
+      clearTimeout(this.lagTimer);
+      this.lagTimer = null;
     }
 
     // Stop sample timer
@@ -205,7 +212,8 @@ export class PerformanceMonitor {
 
       // Schedule next check after runAfterInteractions
       InteractionManager.runAfterInteractions(() => {
-        setTimeout(checkLag, 100);
+        if (!this.isRunning) return;
+        this.lagTimer = setTimeout(checkLag, 100);
       });
     };
 

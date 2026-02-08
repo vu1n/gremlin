@@ -167,19 +167,22 @@ export class StreamingTransport {
     this.flushing = true;
 
     // Send async — restore events on failure
-    this.sendBatch(payload).then((success) => {
-      this.flushing = false;
-      if (!success) {
-        // Prepend failed events back so they're retried on next flush
-        this.pendingEvents = [...events, ...this.pendingEvents];
-        this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
-      }
-      if (this.config.debug) {
-        console.log(
-          `[StreamingTransport] Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'queued for retry'}`
-        );
-      }
-    });
+    this.sendBatch(payload)
+      .then((success) => {
+        if (!success) {
+          // Prepend failed events back so they're retried on next flush
+          this.pendingEvents = [...events, ...this.pendingEvents];
+          this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
+        }
+        if (this.config.debug) {
+          console.log(
+            `[StreamingTransport] Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'queued for retry'}`
+          );
+        }
+      })
+      .finally(() => {
+        this.flushing = false;
+      });
   }
 
   /**

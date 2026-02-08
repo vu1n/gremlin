@@ -168,7 +168,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to aggregate performance data',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -201,7 +201,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to get session performance',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -267,7 +267,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to upload session',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -334,7 +334,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to retrieve session',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -391,7 +391,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to list sessions',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -441,7 +441,7 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to delete session',
-            details: error instanceof Error ? error.message : 'Unknown error',
+            // details omitted to avoid leaking internals
           },
         },
         500
@@ -473,7 +473,6 @@ export function registerApiRoutes(
         error: {
           code: 'INTERNAL_ERROR',
           message: 'Internal server error',
-          details: err.message,
         },
       },
       500

@@ -169,14 +169,9 @@ export class NavigationListener {
       return 'modal';
     }
 
-    // Check for tab navigation (same level, different screen)
-    // This is a heuristic - proper tab detection would need navigator type info
-    if (this.routeHistory.length > 2 &&
-        this.routeHistory[this.routeHistory.length - 2] !== current.name) {
-      return 'tab';
-    }
-
     // Default to push for new screens
+    // Note: proper tab detection requires navigator type info from React Navigation,
+    // which isn't available through the state listener alone.
     return 'push';
   }
 

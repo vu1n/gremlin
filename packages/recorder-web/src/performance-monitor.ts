@@ -38,7 +38,7 @@ export class WebPerformanceMonitor {
   private lastFrameTime = 0;
   private currentFPS = 60;
   private rafHandle: number | null = null;
-  private minFps = 60;
+  private minFps = Infinity;
   private fpsSamples: number[] = [];
 
   // Long task tracking
@@ -153,7 +153,7 @@ export class WebPerformanceMonitor {
       perf.avgFps = Math.round(
         this.fpsSamples.reduce((a, b) => a + b, 0) / this.fpsSamples.length
       );
-      perf.minFps = Math.round(this.minFps);
+      perf.minFps = this.minFps === Infinity ? undefined : Math.round(this.minFps);
     }
 
     if (this.config.trackMemory && this.peakMemoryUsage > 0) {
@@ -198,6 +198,10 @@ export class WebPerformanceMonitor {
       if (delta >= 1000) {
         this.currentFPS = (this.frameCount / delta) * 1000;
         this.fpsSamples.push(this.currentFPS);
+        // Cap samples to prevent unbounded growth in long sessions
+        if (this.fpsSamples.length > 3600) {
+          this.fpsSamples = this.fpsSamples.slice(-1800);
+        }
         if (this.currentFPS < this.minFps) {
           this.minFps = this.currentFPS;
         }

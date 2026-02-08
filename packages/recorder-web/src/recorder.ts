@@ -467,11 +467,9 @@ export class GremlinRecorder extends BaseRecorder {
     super.addEventToSession(enrichedEvent);
 
     // Stream event if enabled
-    if (this.streamingTransport && this.isRecording()) {
-      // Get the last event (which was just added with dt)
-      const session = this.getSession();
-      if (session && session.events.length > 0) {
-        const lastEvent = session.events[session.events.length - 1];
+    if (this.streamingTransport && this.isRecording() && this.session) {
+      const lastEvent = this.session.events[this.session.events.length - 1];
+      if (lastEvent) {
         this.streamingTransport.pushEvent(lastEvent);
       }
     }
@@ -1050,9 +1048,11 @@ export class GremlinRecorder extends BaseRecorder {
 
     // Rebuild element map from session
     session.elements.forEach((el, idx) => {
-      const key = el.testId || el.accessibilityLabel || el.text || 'unknown';
+      const key = el.testId || el.accessibilityLabel || el.text || `_unknown_${idx}`;
       (this as any).elementMap.set(key, idx);
     });
+    // Sync the unknownElementCounter so new elements don't collide
+    (this as any).unknownElementCounter = session.elements.length;
 
     // Restore rrweb events if available
     if (Array.isArray(rrwebEventsData)) {

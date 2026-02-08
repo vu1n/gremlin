@@ -22,6 +22,14 @@ import type {
 
 const INDEX_FILE = 'index.json';
 
+// Serialize index read-modify-write operations to prevent concurrent corruption
+let indexLock: Promise<unknown> = Promise.resolve();
+function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = indexLock.catch(() => {}).then(fn);
+  indexLock = result.catch(() => {});
+  return result;
+}
+
 export function generateSessionId(): string {
   const timestamp = Date.now().toString(36);
   const random = crypto.randomUUID().split('-')[0];
@@ -50,9 +58,11 @@ export async function storeSession(
     path: sessionPath,
   };
 
-  const index = await loadIndex(config);
-  index[sessionId] = indexEntry;
-  await saveIndex(config, index);
+  await withIndexLock(async () => {
+    const index = await loadIndex(config);
+    index[sessionId] = indexEntry;
+    await saveIndex(config, index);
+  });
 
   return sessionId;
 }
@@ -130,11 +140,13 @@ export async function deleteSession(
 
   await rm(sessionPath, { force: true });
 
-  const index = await loadIndex(config);
-  if (index[id]) {
-    delete index[id];
-    await saveIndex(config, index);
-  }
+  await withIndexLock(async () => {
+    const index = await loadIndex(config);
+    if (index[id]) {
+      delete index[id];
+      await saveIndex(config, index);
+    }
+  });
 
   return true;
 }

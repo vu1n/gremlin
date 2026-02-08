@@ -49,9 +49,9 @@ function errorResult(message: string): { content: { type: 'text'; text: string }
   };
 }
 
-async function runCliCommand(args: string): Promise<string> {
+async function runCliCommand(args: string[]): Promise<string> {
   try {
-    const proc = Bun.spawn(['bun', 'run', 'packages/cli/src/index.ts', ...args.split(/\s+/), '--json'], {
+    const proc = Bun.spawn(['bun', 'run', 'packages/cli/src/index.ts', ...args, '--json'], {
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -546,11 +546,11 @@ server.tool(
   },
   async ({ provider, playwright, maestro }) => {
     const args: string[] = ['generate'];
-    if (provider) args.push(`--provider ${provider}`);
+    if (provider) args.push('--provider', provider);
     if (playwright) args.push('--playwright');
     if (maestro) args.push('--maestro');
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -572,9 +572,9 @@ server.tool(
   },
   async ({ testsDir }) => {
     const args: string[] = ['run', '--all'];
-    if (testsDir) args.push(`--tests-dir ${testsDir}`);
+    if (testsDir) args.push('--tests-dir', testsDir);
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -665,10 +665,10 @@ server.tool(
   },
   async ({ provider, focus }) => {
     const args: string[] = ['analyze'];
-    if (provider) args.push(`--provider ${provider}`);
-    if (focus) args.push(`--focus ${focus}`);
+    if (provider) args.push('--provider', provider);
+    if (focus) args.push('--focus', focus);
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -692,11 +692,11 @@ server.tool(
   },
   async ({ appName, framework, skipInstall }) => {
     const args: string[] = ['init'];
-    if (appName) args.push(`--app-name ${appName}`);
-    if (framework) args.push(`--framework ${framework}`);
+    if (appName) args.push('--app-name', appName);
+    if (framework) args.push('--framework', framework);
     if (skipInstall) args.push('--skip-install');
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -832,10 +832,10 @@ server.tool(
   },
   async ({ margin, update }) => {
     const args: string[] = ['perf-baseline'];
-    if (margin) args.push(`--margin ${margin}`);
+    if (margin) args.push('--margin', String(margin));
     if (update) args.push('--update');
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -857,9 +857,9 @@ server.tool(
   },
   async ({ baseUrl }) => {
     const args: string[] = ['generate', '--perf'];
-    if (baseUrl) args.push(`--base-url ${baseUrl}`);
+    if (baseUrl) args.push('--base-url', baseUrl);
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -880,7 +880,7 @@ server.tool(
   async () => {
     const args: string[] = ['run', '--perf'];
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -903,10 +903,10 @@ server.tool(
   },
   async ({ minOccurrences, since }) => {
     const args: string[] = ['errors'];
-    if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
-    if (since) args.push(`--since ${since}`);
+    if (minOccurrences) args.push('--min-occurrences', String(minOccurrences));
+    if (since) args.push('--since', since);
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));
@@ -928,9 +928,9 @@ server.tool(
   },
   async ({ minOccurrences }) => {
     const args: string[] = ['generate', '--errors'];
-    if (minOccurrences) args.push(`--min-occurrences ${minOccurrences}`);
+    if (minOccurrences) args.push('--min-occurrences', String(minOccurrences));
 
-    const result = await runCliCommand(args.join(' '));
+    const result = await runCliCommand(args);
 
     try {
       return textResult(JSON.parse(result));

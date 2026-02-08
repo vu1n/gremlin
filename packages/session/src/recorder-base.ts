@@ -58,6 +58,7 @@ export abstract class BaseRecorder {
   protected currentScreen: string = 'unknown';
   protected lastEventTimestamp: number = 0;
   protected elementMap: Map<string, number> = new Map();
+  private unknownElementCounter = 0;
   protected config: Required<BaseRecorderConfig>;
   protected batcher: EventBatcher;
 
@@ -125,6 +126,7 @@ export abstract class BaseRecorder {
     this.recording = true;
     this.lastEventTimestamp = now;
     this.elementMap.clear();
+    this.unknownElementCounter = 0;
 
     if (this.config.debug) {
       console.log('[Gremlin] Recording started', {
@@ -180,13 +182,9 @@ export abstract class BaseRecorder {
   getSession(): GremlinSession | null {
     if (!this.session) return null;
 
-    return {
-      ...this.session,
-      header: {
-        ...this.session.header,
-        endTime: this.session.header.endTime || Date.now(),
-      },
-    };
+    // During recording, return session directly to avoid copying on every call.
+    // endTime is set in stop() — callers needing a snapshot should use exportJson().
+    return this.session;
   }
 
   getEventCount(): number {
@@ -229,7 +227,7 @@ export abstract class BaseRecorder {
   protected getOrCreateElement(info: Partial<ElementInfo>): number {
     if (!this.session) return -1;
 
-    const key = info.testId || info.accessibilityLabel || info.text || 'unknown';
+    const key = info.testId || info.accessibilityLabel || info.text || `_unknown_${this.unknownElementCounter++}`;
 
     if (this.elementMap.has(key)) {
       return this.elementMap.get(key)!;

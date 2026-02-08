@@ -102,22 +102,24 @@ describe('BaseRecorder', () => {
       expect(recorder.getSession()).toBeNull();
     });
 
-    it('getSession() returns session copy during recording', () => {
+    it('getSession() returns same session reference during recording', () => {
       recorder.start();
       const s1 = recorder.getSession();
       const s2 = recorder.getSession();
       expect(s1).not.toBeNull();
       expect(s2).not.toBeNull();
-      // Should be different object references (copy)
-      expect(s1).not.toBe(s2);
+      // Returns the live session reference (no copy overhead)
+      expect(s1).toBe(s2);
     });
 
-    it('getSession() fills in endTime if not set', () => {
+    it('stop() sets endTime on session', () => {
       recorder.start();
-      const session = recorder.getSession()!;
-      // During recording, endTime should be set to current time
+      const before = Date.now();
+      const session = recorder.stop()!;
+      const after = Date.now();
       expect(session.header.endTime).toBeDefined();
-      expect(session.header.endTime).toBeGreaterThan(0);
+      expect(session.header.endTime).toBeGreaterThanOrEqual(before);
+      expect(session.header.endTime).toBeLessThanOrEqual(after);
     });
 
     it('getEventCount() returns 0 before recording', () => {
