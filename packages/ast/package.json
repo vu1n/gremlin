@@ -10,12 +10,11 @@
   },
   "scripts": {
     "test": "bun test",
-    "test:routes": "bun run src/extractors/routes/expo.test.ts",
-    "test:edge-cases": "bun run src/extractors/routes/expo.edge-cases.test.ts",
-    "test:all": "bun run test:routes && bun run test:edge-cases",
+    "script:routes": "bun run src/extractors/routes/expo.script.ts",
+    "script:edge-cases": "bun run src/extractors/routes/expo.edge-cases.script.ts",
     "demo": "bun run cli.ts /Users/vuln/code/gremlin/examples/expo-app",
     "demo:compare": "bun run examples/compare-sessions.ts",
-    "demo:merger": "bun run src/merger.example.ts"
+    "demo:merger": "bun run examples/merger.example.ts"
   },
   "keywords": [
     "gremlin",

@@ -13,7 +13,7 @@ import { tmpdir } from 'os';
 
 // We test the helper functions and sub-behaviors directly since the
 // main `init()` function uses `process.cwd()` and `process.exit()`.
-import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode } from '../detect.ts';
+import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from '../detect.ts';
 
 // ============================================================================
 // Setup / Teardown
@@ -97,6 +97,18 @@ describe('detectFramework', () => {
     expect(detectFramework()).toBe('unknown');
   });
 
+  it('returns unknown when no framework deps match', () => {
+    writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({
+      dependencies: { express: '4.0.0' },
+    }));
+    expect(detectFramework()).toBe('unknown');
+  });
+
+  it('returns unknown when package.json has no dependencies field', () => {
+    writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({ name: 'test' }));
+    expect(detectFramework()).toBe('unknown');
+  });
+
   it('prioritizes Next.js over Vite when both present', () => {
     writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({
       dependencies: { next: '^14.0.0', react: '^18.0.0' },
@@ -105,11 +117,26 @@ describe('detectFramework', () => {
     expect(detectFramework()).toBe('nextjs');
   });
 
+  it('prioritizes Remix over Vite when both present', () => {
+    writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({
+      dependencies: { '@remix-run/react': '2.0.0', react: '18.0.0' },
+      devDependencies: { vite: '5.0.0' },
+    }));
+    expect(detectFramework()).toBe('remix');
+  });
+
   it('prioritizes Expo over bare React Native', () => {
     writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({
       dependencies: { expo: '^50.0.0', 'react-native': '^0.73.0', react: '^18.0.0' },
     }));
     expect(detectFramework()).toBe('expo');
+  });
+
+  it('detects framework from devDependencies', () => {
+    writeFileSync(join(tmpDir, 'package.json'), JSON.stringify({
+      devDependencies: { next: '14.0.0' },
+    }));
+    expect(detectFramework()).toBe('nextjs');
   });
 });
 
@@ -117,9 +144,19 @@ describe('detectFramework', () => {
 // Tests: Framework Info
 // ============================================================================
 
+describe('formatFramework', () => {
+  it('formats nextjs', () => expect(formatFramework('nextjs')).toBe('Next.js'));
+  it('formats vite', () => expect(formatFramework('vite')).toBe('Vite + React'));
+  it('formats cra', () => expect(formatFramework('cra')).toBe('Create React App'));
+  it('formats remix', () => expect(formatFramework('remix')).toBe('Remix'));
+  it('formats expo', () => expect(formatFramework('expo')).toBe('Expo'));
+  it('formats react-native', () => expect(formatFramework('react-native')).toBe('React Native (bare)'));
+  it('formats unknown', () => expect(formatFramework('unknown')).toContain('Unknown'));
+});
+
 describe('getFrameworkInfo', () => {
   it('returns web SDK for web frameworks', () => {
-    for (const fw of ['nextjs', 'vite', 'cra', 'remix'] as const) {
+    for (const fw of ['nextjs', 'vite', 'cra', 'remix'] as Framework[]) {
       const info = getFrameworkInfo(fw);
       expect(info.sdkPackage).toBe('@gremlin/recorder-web');
       expect(info.isNative).toBe(false);
@@ -127,33 +164,41 @@ describe('getFrameworkInfo', () => {
   });
 
   it('returns RN SDK for native frameworks', () => {
-    for (const fw of ['expo', 'react-native'] as const) {
+    for (const fw of ['expo', 'react-native'] as Framework[]) {
       const info = getFrameworkInfo(fw);
       expect(info.sdkPackage).toBe('@gremlin/recorder-react-native');
       expect(info.isNative).toBe(true);
     }
   });
 
-  it('returns display name for each framework', () => {
-    expect(formatFramework('nextjs')).toBe('Next.js');
-    expect(formatFramework('vite')).toBe('Vite + React');
-    expect(formatFramework('cra')).toBe('Create React App');
-    expect(formatFramework('remix')).toBe('Remix');
-    expect(formatFramework('expo')).toBe('Expo');
-    expect(formatFramework('react-native')).toBe('React Native (bare)');
-    expect(formatFramework('unknown')).toContain('Unknown');
+  it('includes install command with SDK package', () => {
+    const info = getFrameworkInfo('vite');
+    expect(info.installCommand).toBe('bun add @gremlin/recorder-web');
   });
 
-  it('includes install command', () => {
+  it('includes entry points for Next.js', () => {
     const info = getFrameworkInfo('nextjs');
-    expect(info.installCommand).toContain('bun add');
-    expect(info.installCommand).toContain('@gremlin/recorder-web');
+    expect(info.entryPoints).toContain('pages/_app.tsx');
+    expect(info.entryPoints).toContain('app/layout.tsx');
   });
 
-  it('includes entry points', () => {
-    const info = getFrameworkInfo('nextjs');
-    expect(info.entryPoints.length).toBeGreaterThan(0);
-    expect(info.entryPoints.some(e => e.includes('_app') || e.includes('layout'))).toBe(true);
+  it('includes entry points for Vite', () => {
+    const info = getFrameworkInfo('vite');
+    expect(info.entryPoints).toContain('src/main.tsx');
+  });
+
+  it('includes entry points for Expo', () => {
+    const info = getFrameworkInfo('expo');
+    expect(info.entryPoints).toContain('App.tsx');
+    expect(info.entryPoints).toContain('app/_layout.tsx');
+  });
+
+  it('has non-empty entryPointHint for all frameworks', () => {
+    const frameworks: Framework[] = ['nextjs', 'vite', 'cra', 'remix', 'expo', 'react-native', 'unknown'];
+    for (const fw of frameworks) {
+      const info = getFrameworkInfo(fw);
+      expect(info.entryPointHint.length).toBeGreaterThan(0);
+    }
   });
 
   it('includes dev command', () => {
@@ -210,15 +255,21 @@ describe('findEntryPoint', () => {
 describe('getInitCode', () => {
   it('generates web recorder import for web frameworks', () => {
     const code = getInitCode('vite', { appName: 'MyApp' });
-    expect(code).toContain("from '@gremlin/recorder-web'");
+    expect(code).toContain('@gremlin/recorder-web');
+    expect(code).toContain('GremlinRecorder');
     expect(code).toContain("appName: 'MyApp'");
     expect(code).toContain('recorder.start()');
   });
 
   it('generates RN recorder import for native frameworks', () => {
     const code = getInitCode('expo', { appName: 'MyApp' });
-    expect(code).toContain("from '@gremlin/recorder-react-native'");
+    expect(code).toContain('@gremlin/recorder-react-native');
     expect(code).toContain("appName: 'MyApp'");
+  });
+
+  it('generates RN recorder import for bare react-native', () => {
+    const code = getInitCode('react-native');
+    expect(code).toContain('@gremlin/recorder-react-native');
   });
 
   it('includes serverUrl when provided', () => {
