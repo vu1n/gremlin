@@ -11,11 +11,13 @@
  * - Index routes at various levels
  */
 
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'node:url';
 import { extractExpoRoutes } from './expo.js';
 import type { Route } from '../../types.js';
 
-// Test the actual expo-app example
-const expoAppPath = '/Users/vuln/code/gremlin/examples/expo-app';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const expoAppPath = resolve(__dirname, '../../../../../examples/expo-app');
 const result = extractExpoRoutes({
   rootDir: expoAppPath,
   includeLayouts: true

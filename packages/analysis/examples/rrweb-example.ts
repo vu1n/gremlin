@@ -16,7 +16,7 @@ import {
   MouseInteractions,
   type RrwebEvent,
   type RrwebImportOptions,
-} from './rrweb';
+} from '../src/importers/rrweb';
 
 // ============================================================================
 // Example 1: Import from raw rrweb events

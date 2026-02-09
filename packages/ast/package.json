@@ -12,7 +12,7 @@
     "test": "bun test",
     "script:routes": "bun run src/extractors/routes/expo.script.ts",
     "script:edge-cases": "bun run src/extractors/routes/expo.edge-cases.script.ts",
-    "demo": "bun run cli.ts /Users/vuln/code/gremlin/examples/expo-app",
+    "demo": "bun run cli.ts ../../examples/expo-app",
     "demo:compare": "bun run examples/compare-sessions.ts",
     "demo:merger": "bun run examples/merger.example.ts"
   },

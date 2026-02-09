@@ -20,10 +20,10 @@ function makeRoute(path: string, params: string[] = []): Route {
     path,
     filePath: `/app/${path.replace(/\//g, '_')}.tsx`,
     params,
+    source: 'file-based',
     isLayout: false,
     isIndex: path === '/' || path === '',
-    isDynamic: params.length > 0,
-  } as Route;
+  };
 }
 
 function navEvent(screen: string, dt: number = 100): { dt: number; type: number; data: NavigationEvent } {

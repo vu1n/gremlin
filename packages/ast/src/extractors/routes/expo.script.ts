@@ -4,12 +4,12 @@
  * Run with: bun run src/extractors/routes/expo.test.ts
  */
 
-import { join } from 'path';
+import { join, resolve, dirname } from 'path';
 import { extractExpoRoutes, printRoutes } from './expo.js';
+import { fileURLToPath } from 'node:url';
 
-// Path to the expo-app example
-// When running from packages/ast, we need to go up to the gremlin root
-const expoAppPath = '/Users/vuln/code/gremlin/examples/expo-app';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const expoAppPath = resolve(__dirname, '../../../../../examples/expo-app');
 
 console.log('Testing Expo Router route extraction...');
 console.log(`App path: ${expoAppPath}\n`);

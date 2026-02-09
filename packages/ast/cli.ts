@@ -10,7 +10,7 @@ const appPath = process.argv[2];
 
 if (!appPath) {
   console.error('Usage: bun run cli.ts <path-to-app>');
-  console.error('Example: bun run cli.ts /Users/vuln/code/gremlin/examples/expo-app');
+  console.error('Example: bun run cli.ts ../../examples/expo-app');
   process.exit(1);
 }
 

@@ -8,7 +8,11 @@
  * - Coverage percentage
  */
 
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'node:url';
 import { extractExpoRoutes } from '../src/index.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Example session data (from Gremlin recordings)
 interface SessionRoute {
@@ -29,7 +33,7 @@ const sessionRoutes: SessionRoute[] = [
 ];
 
 // Extract routes from codebase
-const expoAppPath = '/Users/vuln/code/gremlin/examples/expo-app';
+const expoAppPath = resolve(__dirname, '../../examples/expo-app');
 const extractionResult = extractExpoRoutes({
   rootDir: expoAppPath,
   includeLayouts: false // Exclude layouts from coverage analysis

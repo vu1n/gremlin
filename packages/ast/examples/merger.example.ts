@@ -9,10 +9,10 @@
  * 5. Detecting cycles
  */
 
-import { extractExpoRoutes } from './extractors/routes/expo.js';
-import { mergeSpecs } from './merger.js';
-import { calculateCoverage, formatCoverageReport } from './coverage.js';
-import { detectCycles, formatCyclesReport } from './cycle-detector.js';
+import { extractExpoRoutes } from '../src/extractors/routes/expo.js';
+import { mergeSpecs } from '../src/merger.js';
+import { calculateCoverage, formatCoverageReport } from '../src/coverage.js';
+import { detectCycles, formatCyclesReport } from '../src/cycle-detector.js';
 import type { GremlinSession, DeviceInfo, AppInfo } from '@gremlin/session';
 import { createSession, getOrCreateElement, EventTypeEnum } from '@gremlin/session';
 import * as path from 'node:path';
