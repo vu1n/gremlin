@@ -188,7 +188,7 @@ export function formatSessionsForAnalysis(sessions: GremlinSession[]): string {
     lines.push(`- Duration: ${duration.toFixed(1)}s`);
 
     // Session-level performance summary
-    const perf = (session as any).performance;
+    const perf = session.performance;
     if (perf) {
       const parts: string[] = [];
       if (perf.webVitals) {
