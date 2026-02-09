@@ -1,293 +1,188 @@
-# Gremlin Expo Demo App
+# Gremlin Demo Shop - Expo Example
 
-A demonstration e-commerce mobile application built with Expo and React Native to showcase the Gremlin session recording capabilities. This app implements comprehensive `testID` patterns for all interactive elements, making it ideal for testing session replay and user interaction tracking.
+An e-commerce demo app built with Expo Router and React Native, showcasing the **@gremlin/recorder-react-native** SDK for session recording and test generation.
 
-## Overview
+## Prerequisites
 
-This demo app simulates a simple e-commerce shopping experience with the following features:
-- Product browsing and detailed views
-- Shopping cart management
-- Checkout flow with form validation
-- Integration with Gremlin session recorder (placeholder implementation)
+- [Bun](https://bun.sh/) v1.0+
+- iOS Simulator (macOS) or Android Emulator
+- Expo Go app (for physical devices)
 
-## Features
+## Getting Started
 
-### 1. Complete E-Commerce Flow
-- **Home Screen**: Welcome page with feature highlights
-- **Products Screen**: Browse all available products
-- **Product Detail**: View detailed product information
-- **Shopping Cart**: Manage cart items and quantities
-- **Checkout**: Complete purchase with form validation
+From the monorepo root:
 
-### 2. Gremlin Integration
-The app includes a placeholder implementation of the Gremlin recorder in `/lib/gremlin.ts`:
-- Records user interactions (taps, scrolls, text input)
-- Tracks navigation between screens
-- Logs events with testID for element identification
-- Debug mode for console output
-- Ready to be upgraded to the full `@gremlin/recorder-react-native` package when ready
+```bash
+# 1. Install all dependencies
+bun install
 
-**Note**: The full `@gremlin/recorder-react-native` package is being built in parallel and will provide:
-- Automatic gesture capture (taps, swipes, long presses)
-- Navigation tracking with React Navigation
-- Performance monitoring
-- Session export in Gremlin format
+# 2. Start the Expo dev server
+cd examples/expo-app
+bun run start
 
-### 3. TestID Best Practices
-Every interactive element has a unique `testID` following the pattern:
-```
-{screen}-{element}-{action}
+# 3. Press 'i' for iOS simulator or 'a' for Android emulator
 ```
 
-Examples:
-- `home-browse-products-button`
-- `products-product-card-1`
-- `cart-item-2-increment`
-- `checkout-submit-button`
-
-## Tech Stack
-
-- **Framework**: Expo ~54
-- **Navigation**: Expo Router v6
-- **State Management**: Zustand v5
-- **Language**: TypeScript
-- **Runtime**: React Native 0.81
-
-## Project Structure
+## App Structure
 
 ```
 expo-app/
-├── app/                      # Expo Router screens
-│   ├── _layout.tsx          # Root layout with Gremlin initialization
-│   ├── index.tsx            # Home screen
-│   ├── products.tsx         # Product listing
-│   ├── product/
-│   │   └── [id].tsx         # Product detail (dynamic route)
-│   ├── cart.tsx             # Shopping cart
-│   └── checkout.tsx         # Checkout form
-├── components/              # Reusable components
-│   ├── Button.tsx           # Styled button with testID
-│   ├── ProductCard.tsx      # Product display card
-│   └── CartItem.tsx         # Cart item with quantity controls
-├── store/
-│   └── cart.ts              # Zustand cart store
+├── app/
+│   ├── _layout.tsx        # Root layout with GremlinProvider
+│   ├── index.tsx           # Home screen with recorder controls
+│   ├── products.tsx        # Product listing
+│   ├── product/[id].tsx    # Product detail (dynamic route)
+│   ├── cart.tsx            # Shopping cart
+│   └── checkout.tsx        # Checkout flow
+├── components/
+│   ├── Button.tsx          # Reusable button with testID
+│   ├── RecorderWidget.tsx  # Floating recorder controls
+│   ├── ProductCard.tsx     # Product display card
+│   └── CartItem.tsx        # Cart item row
 ├── lib/
-│   ├── gremlin.ts           # Gremlin recorder (placeholder)
-│   └── mockData.ts          # Mock product data
-└── types/
-    └── index.ts             # TypeScript interfaces
+│   ├── gremlin.ts          # GremlinProvider + useGremlin hook
+│   └── mockData.ts         # Mock product data
+├── store/
+│   └── cart.ts             # Zustand cart state
+└── package.json
 ```
 
-## Setup Instructions
+## How Recording Works
 
-### Prerequisites
-- Node.js 18+ or Bun
-- Expo CLI
-- iOS Simulator (for Mac) or Android Emulator
+The `_layout.tsx` wraps the app with `GremlinProvider`, which initializes the recorder once at the root:
 
-### Installation
-
-1. **Navigate to the project directory**:
-   ```bash
-   cd examples/expo-app
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   bun install
-   # or
-   npm install
-   ```
-
-3. **Start the development server**:
-   ```bash
-   bun start
-   # or
-   npm start
-   ```
-
-4. **Run on your platform**:
-   - Press `i` for iOS simulator
-   - Press `a` for Android emulator
-   - Press `w` for web browser
-   - Scan QR code with Expo Go app on your device
-
-## Gremlin Recorder Usage
-
-### Initialization
-
-The Gremlin recorder is automatically initialized in `app/_layout.tsx`:
-
-```typescript
-import { initGremlin } from '../lib/gremlin';
-
-export default function RootLayout() {
-  useEffect(() => {
-    initGremlin({ debug: true });
-  }, []);
-
-  return <Stack>{/* Your screens */}</Stack>;
-}
+```tsx
+<GremlinProvider
+  config={{
+    appName: 'Gremlin Demo Shop',
+    appVersion: '1.0.0',
+    captureAppState: true,
+    enableBatching: true,
+    debug: true,
+  }}
+  autoStart
+>
+  <Slot />
+  <RecorderWidget />
+</GremlinProvider>
 ```
-
-### Recording Events
 
 The recorder automatically captures:
-- **Taps**: All button and pressable interactions
-- **Scrolls**: ScrollView movements
-- **Input**: TextInput changes (values are masked for privacy)
-- **Navigation**: Screen changes
+- **Taps** on all Pressable/TouchableOpacity elements
+- **Navigation** between Expo Router screens
+- **Scroll** events on ScrollView/FlatList
+- **Text input** changes (masked for privacy by default)
+- **App state** transitions (foreground/background)
+- **Performance** metrics (FPS, memory, JS thread lag)
 
-Example event in console:
-```
-[Gremlin] Tap recorded: {
-  testID: 'products-product-card-1',
-  screen: 'products',
-  data: { action: 'product_card_tap', productId: '1', productName: 'Wireless Headphones' }
-}
-```
+Every interactive element uses `testID` for identification:
 
-### Exporting Sessions
-
-To export the recorded session:
-
-```typescript
-import { getGremlin } from './lib/gremlin';
-
-const session = getGremlin().exportSession();
-console.log(session);
+```tsx
+<Button title="Add to Cart" testID="product-add-to-cart-1" onPress={...} />
 ```
 
-The session export includes:
-- All recorded events with timestamps
-- Session ID and duration
-- Start and end times
+## Recording and Exporting Sessions
+
+1. Launch the app — recording starts automatically
+2. Browse products, add to cart, go through checkout
+3. Use the floating `RecorderWidget` or the home screen controls:
+   - **View Stats** — see event counts by type
+   - **Export Session** — share the session JSON via the Share sheet or console
+
+The exported session JSON can be used directly with the Gremlin CLI.
+
+## Using Sessions with Gremlin CLI
+
+### Option 1: Copy exported session
+
+```bash
+# Copy the session JSON to your project's sessions directory
+cp gremlin-session-*.json .gremlin/sessions/
+
+# Generate Maestro tests for mobile
+gremlin generate --maestro --app-id com.example.app
+
+# Or Playwright tests for Expo web
+gremlin generate --playwright --base-url http://localhost:8081
+```
+
+### Option 2: Live recording via dev server
+
+Configure the recorder to send sessions to `gremlin dev`:
+
+```bash
+# Terminal 1: Start the Gremlin dev server
+gremlin dev --port 3334
+
+# Terminal 2: Start the Expo dev server
+cd examples/expo-app
+bun run start
+```
+
+Then update `_layout.tsx` to point the recorder at the dev server:
+
+```tsx
+<GremlinProvider
+  config={{
+    appName: 'Gremlin Demo Shop',
+    appVersion: '1.0.0',
+    serverUrl: 'http://localhost:3334',  // Send sessions to gremlin dev
+  }}
+  autoStart
+>
+```
+
+### Generating and running tests
+
+```bash
+# List recorded sessions
+gremlin sessions
+
+# Generate tests
+gremlin generate --maestro
+
+# Generate fuzz tests
+gremlin fuzz --strategy all --count 10
+
+# Run tests
+gremlin run
+```
 
 ## TestID Patterns
 
-### Naming Convention
-All testIDs follow this pattern:
-```
-{screen}-{element}-{action}-{identifier?}
-```
+| Screen | Element | testID |
+|--------|---------|--------|
+| Home | Scroll view | `home-scroll-view` |
+| Home | Browse products | `home-browse-products-button` |
+| Home | View cart | `home-view-cart-button` |
+| Home | Toggle recording | `recorder-toggle-button` |
+| Home | View stats | `recorder-stats-button` |
+| Home | Export session | `recorder-export-button` |
+| Products | Product card | `products-product-card-{id}` |
+| Products | View cart | `products-view-cart-button` |
+| Product | Add to cart | `product-{id}-add-to-cart-button` |
+| Cart | Cart item | `cart-item-{id}` |
+| Cart | Increment qty | `cart-item-{id}-increment` |
+| Cart | Decrement qty | `cart-item-{id}-decrement` |
+| Cart | Remove item | `cart-item-{id}-remove` |
+| Cart | Checkout | `cart-checkout-button` |
+| Checkout | Name input | `checkout-name-input` |
+| Checkout | Email input | `checkout-email-input` |
+| Checkout | Submit | `checkout-submit-button` |
 
-### Examples by Screen
+## Tech Stack
 
-**Home Screen**:
-- `home-scroll-view`
-- `home-browse-products-button`
-- `home-view-cart-button`
+- **Expo** ~54 with Expo Router v6
+- **React Native** 0.81
+- **Zustand** v5 for state management
+- **TypeScript** 5.9
 
-**Products Screen**:
-- `products-scroll-view`
-- `products-product-card-1`
-- `products-product-card-2`
-- `products-view-cart-button`
+## Example User Flow
 
-**Product Detail**:
-- `product-1-scroll-view`
-- `product-1-add-to-cart-button`
+1. **Home** — tap "Browse Products"
+2. **Products** — scroll, tap a product card
+3. **Product Detail** — tap "Add to Cart"
+4. **Cart** — adjust quantities, tap "Checkout"
+5. **Checkout** — fill form, place order
 
-**Cart Screen**:
-- `cart-scroll-view`
-- `cart-item-1`
-- `cart-item-1-increment`
-- `cart-item-1-decrement`
-- `cart-item-1-remove`
-- `cart-checkout-button`
-- `cart-clear-cart-button`
-
-**Checkout Screen**:
-- `checkout-scroll-view`
-- `checkout-name-input`
-- `checkout-email-input`
-- `checkout-address-input`
-- `checkout-city-input`
-- `checkout-zipCode-input`
-- `checkout-cardNumber-input`
-- `checkout-submit-button`
-
-## Development Notes
-
-### Recorder API
-
-The placeholder Gremlin recorder provides the following API:
-
-```typescript
-// GremlinRecorder methods
-recorder.start()              // Start recording
-recorder.stop()               // Stop recording
-recorder.setScreen(name)      // Set current screen name
-recorder.recordTap(testID, data) // Record tap event
-recorder.recordScroll(data)   // Record scroll event
-recorder.recordInput(testID, value) // Record input event
-recorder.recordNavigation(from, to) // Record navigation
-recorder.getEvents()          // Get all recorded events
-recorder.exportSession()      // Export session as object
-```
-
-### Adding New Screens
-
-1. Create a new file in `app/`
-2. Add `useEffect` to set screen name with Gremlin
-3. Add testIDs to all interactive elements
-4. Follow the naming convention
-
-Example:
-
-```typescript
-import { getGremlin } from '../lib/gremlin';
-
-export default function MyScreen() {
-  useEffect(() => {
-    try {
-      getGremlin().setScreen('my-screen');
-    } catch (e) {
-      // Gremlin not initialized yet
-    }
-  }, []);
-
-  return (
-    <View>
-      <Button testID="my-screen-action-button" onPress={handleAction} />
-    </View>
-  );
-}
-```
-
-### Testing TestIDs
-
-You can verify testIDs are working by:
-1. Debug mode is enabled by default in initialization
-2. Check console logs for recorded events
-3. Use React Native debugger to inspect elements
-4. Export the session to inspect all captured events
-
-## Mock Data
-
-The app includes 6 mock products in `/lib/mockData.ts`:
-- Wireless Headphones ($79.99)
-- Smart Watch ($299.99)
-- Laptop Backpack ($49.99)
-- USB-C Hub ($34.99)
-- Wireless Mouse ($24.99)
-- Phone Case ($19.99)
-
-Feel free to modify or add more products for testing.
-
-## Future Enhancements
-
-The full `@gremlin/recorder-react-native` package will provide:
-- Automatic gesture capture (taps, swipes, long presses, double taps)
-- React Navigation integration for automatic screen tracking
-- Performance monitoring (FPS, memory usage, JS thread lag)
-- Crash reporting integration
-- Session upload to Gremlin servers
-- Privacy controls for sensitive data masking
-- Configuration options for sampling rate
-- Element capture with bounds and hierarchy
-- App state tracking (foreground/background)
-
-## License
-
-This is a demo application for the Gremlin project.
+This captures ~20-30 events with navigation, taps, inputs, and scroll data — enough for Gremlin to generate a full Maestro test suite.
