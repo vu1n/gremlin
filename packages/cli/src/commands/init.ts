@@ -22,6 +22,7 @@ export interface InitOptions extends OutputOptions {
   skipInstall?: boolean;
   instrument?: boolean;
   serverUrl?: string;
+  force?: boolean;
 }
 
 export interface InitResult {
@@ -68,8 +69,8 @@ export async function init(options: InitOptions): Promise<InitResult> {
 
   // --- Check for existing .gremlin directory ---
   const gremlinDir = join(cwd, '.gremlin');
-  if (existsSync(join(gremlinDir, 'config.json'))) {
-    const msg = '.gremlin/config.json already exists. Run with a clean state or delete .gremlin/ first.';
+  if (existsSync(join(gremlinDir, 'config.json')) && !options.force) {
+    const msg = '.gremlin/config.json already exists. Use --force to reinitialize.';
     if (!outputError('init', [msg], options)) {
       console.error(`Error: ${msg}`);
     }
@@ -125,26 +126,25 @@ export async function init(options: InitOptions): Promise<InitResult> {
     if (!options.json) {
       console.log(`  [ ] Installing ${info.sdkPackage}...`);
     }
-    try {
-      // Use spawnSync with argument array to prevent command injection
-      const result = spawnSync('bun', ['add', info.sdkPackage], {
-        cwd,
-        stdio: 'pipe',
-        shell: false,
-      });
+    // Use spawnSync with argument array to prevent command injection
+    const result = spawnSync('bun', ['add', info.sdkPackage], {
+      cwd,
+      stdio: 'pipe',
+      shell: false,
+    });
 
-      if (result.status !== 0) {
-        throw new Error(`bun add failed with exit code ${result.status}`);
+    if (result.status !== 0) {
+      const stderr = result.stderr?.toString() || '';
+      const msg = `Failed to install ${info.sdkPackage}: ${stderr || 'exit code ' + result.status}`;
+      if (!outputError('init', [msg], options)) {
+        console.error(`  Error: ${msg}`);
+        console.error(`  Run manually: ${info.installCommand}`);
       }
+      process.exit(1);
+    }
 
-      if (!options.json) {
-        console.log(`  [x] Installed ${info.sdkPackage}`);
-      }
-    } catch (err) {
-      const msg = `Failed to install ${info.sdkPackage}. Run manually: ${info.installCommand}`;
-      if (!options.json) {
-        console.warn(`  [!] ${msg}`);
-      }
+    if (!options.json) {
+      console.log(`  [x] Installed ${info.sdkPackage}`);
     }
   } else {
     if (!options.json) {

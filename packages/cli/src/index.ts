@@ -55,6 +55,7 @@ program
   .option('--skip-install', 'Skip SDK package installation')
   .option('--no-instrument', 'Skip auto-instrumentation of entry point')
   .option('--server-url <url>', 'Configure remote server URL')
+  .option('--force', 'Reinitialize even if .gremlin/ exists')
   .action(async (options) => {
     const json = program.opts().json;
     await init({
@@ -63,6 +64,7 @@ program
       skipInstall: options.skipInstall,
       instrument: options.instrument !== false, // Default to true
       serverUrl: options.serverUrl,
+      force: options.force,
       json,
     });
   });

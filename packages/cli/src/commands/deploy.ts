@@ -85,6 +85,27 @@ function ensureDir(dir: string): void {
   }
 }
 
+function getConfigPort(): number | undefined {
+  try {
+    const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+    return config.devServer?.port;
+  } catch {
+    return undefined;
+  }
+}
+
+async function isPortInUse(port: number): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    await fetch(`http://localhost:${port}/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function healthCheck(url: string, timeoutMs: number): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -119,9 +140,36 @@ async function waitForHealth(
 // ============================================================================
 
 export async function deployLocal(options: DeployLocalOptions): Promise<DeployLocalResult> {
-  const port = options.port ?? 3334;
+  const port = options.port ?? getConfigPort() ?? 3334;
   const background = options.background ?? false;
   const url = `http://localhost:${port}`;
+
+  // Check for stale PID file and clean up
+  if (existsSync(PID_FILE)) {
+    try {
+      const oldPid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+      if (oldPid > 0) {
+        process.kill(oldPid, 0); // throws if not alive
+        // Process alive — port collision
+        const msg = `Gremlin server already running (PID ${oldPid}). Stop it first: gremlin deploy stop`;
+        outputError('deploy.local', [msg], options);
+        if (!options.json) console.error(`  Error: ${msg}`);
+        throw new Error(msg);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('already running')) throw e;
+      // Dead process, clean stale PID
+      try { unlinkSync(PID_FILE); } catch {}
+    }
+  }
+
+  // Check if port is already in use by another process
+  if (await isPortInUse(port)) {
+    const msg = `Port ${port} is already in use. Choose a different port with --port or stop the existing process.`;
+    outputError('deploy.local', [msg], options);
+    if (!options.json) console.error(`  Error: ${msg}`);
+    throw new Error(msg);
+  }
 
   if (!background) {
     // Foreground mode: import and run dev server directly
@@ -192,15 +240,39 @@ export async function deployLocal(options: DeployLocalOptions): Promise<DeployLo
 
 export async function deployDocker(options: DeployDockerOptions): Promise<DeployDockerResult> {
   const port = options.port ?? 8787;
-  const apiKey = options.apiKey || randomBytes(32).toString('hex');
   const dataDir = options.dataDir ?? '.gremlin/server-data';
   const detach = options.detach ?? true;
   const url = `http://localhost:${port}`;
 
+  // Check if docker is available
+  const dockerCheck = spawnSync('docker', ['info'], { stdio: 'pipe', shell: false });
+  if (dockerCheck.status !== 0) {
+    const msg = 'Docker is not running or not installed. Install Docker from https://docs.docker.com/get-docker/';
+    outputError('deploy.docker', [msg], options);
+    if (!options.json) console.error(`  Error: ${msg}`);
+    throw new Error(msg);
+  }
+
+  // Persist API key across deploys
+  const keyFile = join(GREMLIN_DIR, 'docker-api-key');
+  let apiKey = options.apiKey;
+  if (!apiKey) {
+    if (existsSync(keyFile)) {
+      apiKey = readFileSync(keyFile, 'utf-8').trim();
+    } else {
+      apiKey = randomBytes(32).toString('hex');
+      ensureDir(GREMLIN_DIR);
+      writeFileSync(keyFile, apiKey, { mode: 0o600 });
+    }
+  }
+
   ensureDir(dataDir);
 
-  // Build docker compose command args
-  const args = ['compose', 'up', '--build'];
+  // Build docker compose command args — skip --build if image already exists
+  const hasImage = spawnSync('docker', ['compose', 'images', '-q'], { stdio: 'pipe', shell: false });
+  const needsBuild = !hasImage.stdout?.toString().trim();
+  const args = ['compose', 'up'];
+  if (needsBuild) args.push('--build');
   if (detach) args.push('-d');
 
   // Set environment variables for docker compose
@@ -294,6 +366,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
 
 export async function deployStatus(options: DeployStatusOptions): Promise<DeployStatusResult> {
   // Check local dev server
+  const configPort = getConfigPort() ?? 3334;
   const local: DeployStatusResult['local'] = { running: false };
   if (existsSync(PID_FILE)) {
     try {
@@ -301,20 +374,20 @@ export async function deployStatus(options: DeployStatusOptions): Promise<Deploy
       // Check if process is alive
       process.kill(pid, 0);
       local.pid = pid;
-      local.port = 3334;
+      local.port = configPort;
       local.url = `http://localhost:${local.port}`;
       local.running = await healthCheck(`${local.url}/health`, 2000);
     } catch {
       // Process not running, stale PID file
     }
   }
-  // Also try health check on default port even without PID file
+  // Also try health check on configured port even without PID file
   if (!local.running) {
-    const defaultHealthy = await healthCheck('http://localhost:3334/health', 2000);
+    const defaultHealthy = await healthCheck(`http://localhost:${configPort}/health`, 2000);
     if (defaultHealthy) {
       local.running = true;
-      local.port = 3334;
-      local.url = 'http://localhost:3334';
+      local.port = configPort;
+      local.url = `http://localhost:${configPort}`;
     }
   }
 

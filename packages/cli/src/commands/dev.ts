@@ -16,6 +16,7 @@ import {
   renameSync,
   readdirSync,
   readFileSync,
+  unlinkSync,
 } from 'fs';
 import { join } from 'path';
 import { networkInterfaces } from 'os';
@@ -83,6 +84,14 @@ export async function dev(options: DevOptions): Promise<void> {
     console.log('  Waiting for sessions...');
     console.log('  ' + '─'.repeat(40));
     console.log('');
+  }
+
+  // Clean up stale .tmp files from crashed writes
+  if (existsSync(output)) {
+    const staleTemps = readdirSync(output).filter(f => f.endsWith('.tmp'));
+    for (const tmp of staleTemps) {
+      try { unlinkSync(join(output, tmp)); } catch {}
+    }
   }
 
   // Initialize from existing session files on disk
@@ -168,6 +177,18 @@ export async function dev(options: DevOptions): Promise<void> {
               JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }),
               {
                 status: 415,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
+          }
+
+          // Reject oversized payloads (50MB limit)
+          const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
+          if (contentLength > 50 * 1024 * 1024) {
+            return new Response(
+              JSON.stringify({ error: 'Payload too large' }),
+              {
+                status: 413,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               }
             );
@@ -259,6 +280,18 @@ export async function dev(options: DevOptions): Promise<void> {
               JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }),
               {
                 status: 415,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
+          }
+
+          // Reject oversized payloads (50MB limit)
+          const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
+          if (contentLength > 50 * 1024 * 1024) {
+            return new Response(
+              JSON.stringify({ error: 'Payload too large' }),
+              {
+                status: 413,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               }
             );
@@ -386,8 +419,16 @@ export async function dev(options: DevOptions): Promise<void> {
     console.log('');
   }
 
-  // Keep server running
-  await new Promise(() => {});
+  // Graceful shutdown on signals
+  await new Promise<void>((resolve) => {
+    const shutdown = () => {
+      if (!jsonMode) console.log('\n  Shutting down...');
+      server.stop();
+      resolve();
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  });
 }
 
 // ============================================================================

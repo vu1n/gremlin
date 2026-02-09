@@ -111,7 +111,7 @@ function checkConfig(): StatusResult['config'] {
       framework: config.framework ?? undefined,
       appName: config.appName ?? undefined,
       sdkPackage: config.sdkPackage ?? undefined,
-      devServerPort: config.devServerPort ?? undefined,
+      devServerPort: config.devServer?.port ?? undefined,
       remoteServerUrl: config.remoteServer?.url ?? null,
     };
   } catch {
