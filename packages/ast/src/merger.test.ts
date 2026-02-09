@@ -252,7 +252,7 @@ describe('initial state', () => {
     const spec = mergeSpecs([], sessions);
 
     // Home is the first screen in all 3 sessions
-    expect(spec.initialState).toBe('Home');
+    expect(spec.initialState).toBe('Home' as any);
   });
 
   it('handles empty routes and sessions', () => {
