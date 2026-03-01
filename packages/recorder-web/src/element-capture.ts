@@ -34,10 +34,7 @@ export function captureElement(element: HTMLElement): ElementInfo {
   };
 }
 
-/**
- * Extract test ID from element.
- * Checks common test ID attributes.
- */
+/** Checks data-testid, data-test-id, data-test, testid, test-id */
 function extractTestId(element: HTMLElement): string | undefined {
   // Check common test ID attributes
   const testId =
@@ -50,10 +47,7 @@ function extractTestId(element: HTMLElement): string | undefined {
   return testId || undefined;
 }
 
-/**
- * Extract accessibility label.
- * Checks aria-label, aria-labelledby, and alt text.
- */
+/** Checks aria-label, aria-labelledby, alt text, label[for], and placeholder. */
 function extractAccessibilityLabel(element: HTMLElement): string | undefined {
   // Direct aria-label
   const ariaLabel = element.getAttribute('aria-label');
@@ -91,10 +85,7 @@ function extractAccessibilityLabel(element: HTMLElement): string | undefined {
   return undefined;
 }
 
-/**
- * Extract visible text content.
- * Truncates long text and normalizes whitespace.
- */
+/** Truncates to 100 chars and normalizes whitespace. Skips containers with >3 children. */
 function extractText(element: HTMLElement): string | undefined {
   // Skip if no visible text
   if (element.children.length > 3) {
@@ -115,9 +106,6 @@ function extractText(element: HTMLElement): string | undefined {
   return text.replace(/\s+/g, ' ');
 }
 
-/**
- * Infer element type from tag name and attributes.
- */
 function inferElementType(element: HTMLElement): ElementType {
   const tagName = element.tagName.toLowerCase();
   const role = element.getAttribute('role');
@@ -195,9 +183,6 @@ function inferElementType(element: HTMLElement): ElementType {
   }
 }
 
-/**
- * Get bounding rectangle of element.
- */
 function getBoundingRect(element: HTMLElement): Rect | undefined {
   try {
     const rect = element.getBoundingClientRect();
@@ -218,10 +203,7 @@ function getBoundingRect(element: HTMLElement): Rect | undefined {
   }
 }
 
-/**
- * Generate CSS selector for element.
- * Creates a unique selector path from root.
- */
+/** Builds a path up to 5 levels deep, stopping early at IDs. */
 function generateCssSelector(element: HTMLElement): string | undefined {
   try {
     // Build selector from element to root
@@ -266,9 +248,6 @@ function generateCssSelector(element: HTMLElement): string | undefined {
   }
 }
 
-/**
- * Extract relevant attributes for debugging.
- */
 function extractRelevantAttributes(element: HTMLElement): Record<string, string> | undefined {
   const attrs: Record<string, string> = {};
 
@@ -324,9 +303,6 @@ export function findInteractiveElement(target: EventTarget | null): HTMLElement 
   return null;
 }
 
-/**
- * Check if element is interactive.
- */
 function isInteractiveElement(element: HTMLElement): boolean {
   const tagName = element.tagName.toLowerCase();
 

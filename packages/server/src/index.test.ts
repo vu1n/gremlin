@@ -6,7 +6,7 @@
 
 import { describe, test, expect, beforeAll } from 'bun:test';
 import type { GremlinSession } from '@gremlin/session';
-import app from './index';
+import app from './index.ts';
 
 // Mock environment for testing
 const mockEnv = {
@@ -97,7 +97,7 @@ function createTestSession(overrides?: Partial<GremlinSession>): GremlinSession 
 }
 
 // Helper to make requests
-async function makeRequest(
+function makeRequest(
   path: string,
   options: RequestInit = {},
   includeAuth = true

@@ -9,14 +9,14 @@ import {
   type PostHogConfig,
   type ListOptions,
 } from '@gremlin/analysis';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { output, exitWithError, type OutputOptions } from '../output.ts';
 
-export interface ImportOptions extends OutputOptions {
+interface ImportOptions extends OutputOptions {
   output: string;
   verbose?: boolean;
 }
 
-export interface PostHogImportOptions extends ImportOptions {
+interface PostHogImportOptions extends ImportOptions {
   apiKey: string;
   projectId: string;
   host?: string;
@@ -26,12 +26,12 @@ export interface PostHogImportOptions extends ImportOptions {
   recordingId?: string;
 }
 
-export interface FileImportOptions extends ImportOptions {
+interface FileImportOptions extends ImportOptions {
   file: string;
   format?: 'rrweb' | 'posthog';
 }
 
-export interface ImportResult {
+interface ImportResult {
   source: string;
   imported: number;
   failed: number;
@@ -49,27 +49,11 @@ export async function importFromPostHog(
 
   // Validate required options
   if (!apiKey) {
-    if (outputError('import', ['PostHog API key required. Set POSTHOG_API_KEY or use --api-key'], options)) {
-      process.exit(1);
-    }
-    console.error(
-      'PostHog API key required. Set POSTHOG_API_KEY or use --api-key'
-    );
-    console.error(
-      '   Get your API key from: https://app.posthog.com/settings/user-api-keys'
-    );
-    process.exit(1);
+    exitWithError('import', 'PostHog API key required. Set POSTHOG_API_KEY or use --api-key', options);
   }
 
   if (!projectId) {
-    if (outputError('import', ['PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id'], options)) {
-      process.exit(1);
-    }
-    console.error(
-      'PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id'
-    );
-    console.error('   Find your project ID in the PostHog URL or settings');
-    process.exit(1);
+    exitWithError('import', 'PostHog project ID required. Set POSTHOG_PROJECT_ID or use --project-id', options);
   }
 
   const config: PostHogConfig = {
@@ -198,18 +182,7 @@ export async function importFromPostHog(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    if (outputError('import', [`Import failed: ${message}`], options)) {
-      process.exit(1);
-    }
-    console.error(`\nImport failed: ${message}`);
-
-    if (message.includes('401') || message.includes('403')) {
-      console.error('\nCheck your API key permissions:');
-      console.error('   - Ensure the key has "Session Recording" read access');
-      console.error('   - Personal API keys work better than project keys');
-    }
-
-    process.exit(1);
+    exitWithError('import', `Import failed: ${message}`, options);
   }
 }
 
@@ -259,20 +232,10 @@ export async function importFromFile(options: FileImportOptions): Promise<Import
       console.log(`  gremlin generate -i ${outputDir}`);
       return result;
     } else {
-      const result: ImportResult = { source: 'file', imported: 0, failed: 1, sessions: [] };
-      if (outputError('import', ['PostHog file format not yet supported. Use --posthog flag to import directly from PostHog API'], options)) {
-        process.exit(1);
-      }
-      console.error('PostHog file format not yet supported');
-      console.error('   Use --posthog flag to import directly from PostHog API');
-      process.exit(1);
+      exitWithError('import', 'PostHog file format not yet supported. Use --posthog flag to import directly from PostHog API', options);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    if (outputError('import', [`Import failed: ${message}`], options)) {
-      process.exit(1);
-    }
-    console.error(`\nImport failed: ${message}`);
-    process.exit(1);
+    exitWithError('import', `Import failed: ${message}`, options);
   }
 }

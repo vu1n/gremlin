@@ -6,10 +6,11 @@
 
 import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
+import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
 import { bodyLimit } from 'hono/body-limit';
-import type { ServerConfig, ErrorResponse } from './types';
+import type { ServerConfig, ErrorResponse } from './types.ts';
 import { registerApiRoutes, type StorageAdapter } from '@gremlin/server-shared';
 import {
   deleteSession,
@@ -17,11 +18,12 @@ import {
   getSessionMetadata,
   listSessions,
   storeSession,
+  appendSessionEvents,
   listSessionsWithPerf,
   getPerformanceAggregation,
   getSessionPerformance,
-} from './storage';
-import { ensureDataLayout, getConfig } from './config';
+} from './storage.ts';
+import { ensureDataLayout, getConfig } from './config.ts';
 
 function createStorageAdapter(config: ServerConfig): StorageAdapter {
   return {
@@ -30,6 +32,7 @@ function createStorageAdapter(config: ServerConfig): StorageAdapter {
     getSessionMetadata: (id) => getSessionMetadata(config, id),
     listSessions: (limit, cursor) => listSessions(config, limit, cursor),
     deleteSession: (id) => deleteSession(config, id),
+    appendSessionEvents: (id, events) => appendSessionEvents(config, id, events),
     listSessionsWithPerf: (opts) => listSessionsWithPerf(config, opts),
     getPerformanceAggregation: () => getPerformanceAggregation(config),
     getSessionPerformance: (id) => getSessionPerformance(config, id),
@@ -59,10 +62,22 @@ export function createApp(config: ServerConfig): Hono {
   // Limit request body size (50MB max for session uploads)
   app.use('/v1/*', bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
-  const authMiddleware = async (c: any, next: any) => {
+  const authMiddleware = async (c: Context, next: Next) => {
     if (config.disableAuth) {
       await next();
       return;
+    }
+
+    if (!config.apiKey) {
+      return c.json(
+        {
+          error: {
+            code: 'AUTH_REQUIRED',
+            message: 'API key not configured',
+          },
+        } as ErrorResponse,
+        401
+      );
     }
 
     const apiKey = c.req.header('X-API-Key');
@@ -71,23 +86,11 @@ export function createApp(config: ServerConfig): Hono {
       return c.json(
         {
           error: {
-            code: 'UNAUTHORIZED',
+            code: 'AUTH_REQUIRED',
             message: 'Missing X-API-Key header',
           },
         } as ErrorResponse,
         401
-      );
-    }
-
-    if (!config.apiKey) {
-      return c.json(
-        {
-          error: {
-            code: 'FORBIDDEN',
-            message: 'API key is not configured on server',
-          },
-        } as ErrorResponse,
-        403
       );
     }
 
@@ -97,18 +100,20 @@ export function createApp(config: ServerConfig): Hono {
       return c.json(
         {
           error: {
-            code: 'FORBIDDEN',
+            code: 'AUTH_INVALID',
             message: 'Invalid API key',
           },
         } as ErrorResponse,
-        403
+        401
       );
     }
 
     await next();
   };
 
-  app.use('/v1/*', authMiddleware);
+  // Auth for /v1/* routes is applied via registerApiRoutes below
+  app.use('/health', authMiddleware);
+  app.use('/metrics', authMiddleware);
 
   // ============================================================================
   // Platform-specific routes
@@ -152,7 +157,9 @@ export function createApp(config: ServerConfig): Hono {
   // ============================================================================
 
   const storage = createStorageAdapter(config);
-  registerApiRoutes(app, () => storage);
+  registerApiRoutes(app, () => storage, {
+    authMiddleware,
+  });
 
   return app;
 }
@@ -181,6 +188,10 @@ async function getMetrics(config: ServerConfig): Promise<{
 if (import.meta.main) {
   const config = getConfig();
   ensureDataLayout(config);
+
+  if (config.disableAuth) {
+    console.warn('[security] DISABLE_AUTH is set — all API endpoints are unauthenticated. Do not use in production.');
+  }
 
   const app = createApp(config);
 

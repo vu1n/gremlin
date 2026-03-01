@@ -62,7 +62,7 @@ Then ask your agent:
 
 > "Set up Gremlin in this project, record a session, and generate tests."
 
-The agent has access to 14 tools — it can initialize your project, check status, generate tests, run them, analyze performance, and more. See [MCP Deep Dive](#mcp-server) for the full tool list.
+The agent has access to 15 tools — it can initialize your project, check status, generate tests, run them, analyze performance, and more. See [MCP Deep Dive](#mcp-server) for the full tool list.
 
 ### With the CLI
 
@@ -128,7 +128,7 @@ Gremlin auto-detects which key is set. Verify with `gremlin status`.
 
 - **Performance Instrumentation** — Web Vitals (LCP, CLS, INP, FCP, TTFB), FPS tracking, long task detection, memory monitoring. Per-event perf context. Regression testing with baselines and budgets.
 
-- **AI Agent Integration** — MCP server with 14 tools, `--json` flag on every CLI command, `llms.txt` generation for agent context.
+- **AI Agent Integration** — MCP server with 15 tools, `--json` flag on every CLI command, `llms.txt` generation for agent context.
 
 ### Framework Support
 
@@ -158,6 +158,7 @@ The `@gremlin/mcp` package gives AI agents direct access to Gremlin via the Mode
 | `gremlin_analytics_summary` | Aggregate analytics across sessions |
 | `gremlin_analytics_performance` | Web Vitals, FPS, memory with p50/p75/p95 percentiles |
 | `gremlin_error_patterns` | Deduplicated error patterns with occurrence counts |
+| `gremlin_generate_error_tests` | Generate error regression tests from session patterns |
 | `gremlin_perf_baseline` | Snapshot performance metrics as regression baseline |
 | `gremlin_generate_perf_tests` | Generate performance regression tests |
 | `gremlin_run_perf_tests` | Run perf tests and compare against baseline |

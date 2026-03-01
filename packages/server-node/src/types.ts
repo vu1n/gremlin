@@ -9,16 +9,9 @@ export {
   type SessionListResult,
   type SessionSummary,
   type ErrorResponse,
-  type SessionUploadResponse,
-  type SessionDeleteResponse,
-  type ValidationResult,
   validateSession,
   createSessionSummary,
 } from '@gremlin/server-shared';
-
-// ============================================================================
-// Self-hosted-specific types
-// ============================================================================
 
 export interface ServerConfig {
   port: number;

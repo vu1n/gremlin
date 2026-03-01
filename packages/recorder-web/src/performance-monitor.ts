@@ -7,10 +7,6 @@
 
 import type { PerformanceSample, WebVitals, SessionPerformance } from '@gremlin/session';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface WebPerformanceMonitorConfig {
   /** Enable FPS tracking via requestAnimationFrame */
   trackFPS?: boolean;
@@ -24,10 +20,6 @@ export interface WebPerformanceMonitorConfig {
   /** Enable memory tracking (Chrome only) */
   trackMemory?: boolean;
 }
-
-// ============================================================================
-// Monitor
-// ============================================================================
 
 export class WebPerformanceMonitor {
   private config: Required<WebPerformanceMonitorConfig>;
@@ -66,9 +58,6 @@ export class WebPerformanceMonitor {
     };
   }
 
-  /**
-   * Start all monitoring subsystems.
-   */
   public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
@@ -87,9 +76,6 @@ export class WebPerformanceMonitor {
     }
   }
 
-  /**
-   * Stop all monitoring subsystems.
-   */
   public stop(): void {
     if (!this.isRunning) return;
     this.isRunning = false;
@@ -110,9 +96,7 @@ export class WebPerformanceMonitor {
     this.fpsSamples = [];
   }
 
-  /**
-   * Get a per-event performance sample. Resets per-sample counters.
-   */
+  /** Resets per-sample counters (longTaskCount, longTaskDuration). */
   public getCurrentSample(): PerformanceSample {
     const sample: PerformanceSample = {};
 
@@ -139,9 +123,6 @@ export class WebPerformanceMonitor {
     return sample;
   }
 
-  /**
-   * Get session-level performance summary.
-   */
   public getSessionPerformance(): SessionPerformance {
     const perf: SessionPerformance = {};
 
@@ -178,9 +159,7 @@ export class WebPerformanceMonitor {
     return perf;
   }
 
-  /**
-   * Mark a navigation event (resets timeSinceNavigation).
-   */
+  /** Resets timeSinceNavigation counter. */
   public markNavigation(): void {
     this.lastNavigationTime = Date.now();
   }

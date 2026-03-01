@@ -4,31 +4,32 @@
  * Uses React Native's view hierarchy and accessibility APIs to identify elements.
  */
 
+import type React from 'react';
 import { findNodeHandle, UIManager } from 'react-native';
+import type { ElementInfo, ElementType } from '@gremlin/session';
 import type { ExtractedElementInfo, ViewMeasurement } from './types';
 
-// Local type definitions
-export type ElementType = 'button' | 'pressable' | 'input' | 'text' | 'image' |
-  'scroll_view' | 'list' | 'modal' | 'container' | 'touchable' | 'unknown';
-
-export interface ElementInfo {
-  testId?: string;
-  accessibilityLabel?: string;
-  text?: string;
-  type: ElementType;
-  bounds?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
+/**
+ * Opaque React Native component instance.
+ * We access React-internal fields (.props, .type, ._fiber, ._owner, .return)
+ * which have no public type definitions. This interface captures the minimal
+ * shape we actually read, keeping the rest of the code narrowed.
+ */
+export interface RNComponentRef {
+  props?: Record<string, unknown>;
+  type?: { displayName?: string; name?: string };
+  constructor?: { name?: string };
+  _fiber?: { type?: { name?: string } };
+  _owner?: RNComponentRef;
+  return?: RNComponentRef;
+  [key: string]: unknown;
 }
 
 /**
  * Capture element information from a React Native component instance
  */
 export async function captureElement(
-  target: any
+  target: RNComponentRef | null | undefined
 ): Promise<ExtractedElementInfo | null> {
   if (!target) return null;
 
@@ -38,12 +39,12 @@ export async function captureElement(
     };
 
     // Extract testID (best for test generation)
-    if (target.props?.testID) {
+    if (typeof target.props?.testID === 'string') {
       elementInfo.testID = target.props.testID;
     }
 
     // Extract accessibility label
-    if (target.props?.accessibilityLabel) {
+    if (typeof target.props?.accessibilityLabel === 'string') {
       elementInfo.accessibilityLabel = target.props.accessibilityLabel;
     }
 
@@ -74,7 +75,7 @@ export async function captureElement(
 /**
  * Detect element type from component props and type
  */
-function detectElementType(target: any): ElementType {
+function detectElementType(target: RNComponentRef): ElementType {
   if (!target) return 'unknown';
 
   const componentName = getComponentName(target);
@@ -144,7 +145,7 @@ function detectElementType(target: any): ElementType {
 /**
  * Get component name from React element
  */
-function getComponentName(target: any): string {
+function getComponentName(target: RNComponentRef): string {
   if (!target) return 'unknown';
 
   // Try type.displayName or type.name
@@ -163,7 +164,7 @@ function getComponentName(target: any): string {
 /**
  * Extract text content from element and children
  */
-function extractTextContent(target: any): string | undefined {
+function extractTextContent(target: RNComponentRef): string | undefined {
   if (!target) return undefined;
 
   // Direct text prop (for Text components)
@@ -172,23 +173,24 @@ function extractTextContent(target: any): string | undefined {
   }
 
   // Button title
-  if (target.props?.title) {
+  if (typeof target.props?.title === 'string') {
     return target.props.title;
   }
 
   // TextInput value or placeholder
-  if (target.props?.value) {
+  if (typeof target.props?.value === 'string') {
     return target.props.value;
   }
-  if (target.props?.placeholder) {
+  if (typeof target.props?.placeholder === 'string') {
     return target.props.placeholder;
   }
 
   // Try to extract from children (shallow)
-  if (Array.isArray(target.props?.children)) {
-    const texts = target.props.children
-      .filter((child: any) => typeof child === 'string')
-      .map((text: string) => text.trim())
+  const children = target.props?.children;
+  if (Array.isArray(children)) {
+    const texts = (children as unknown[])
+      .filter((child): child is string => typeof child === 'string')
+      .map((text) => text.trim())
       .filter(Boolean);
 
     if (texts.length > 0) {
@@ -202,7 +204,7 @@ function extractTextContent(target: any): string | undefined {
 /**
  * Measure element bounds using UIManager
  */
-export function measureElement(target: any): Promise<ViewMeasurement | null> {
+export function measureElement(target: RNComponentRef): Promise<ViewMeasurement | null> {
   let timeoutId: ReturnType<typeof setTimeout>;
   let settled = false;
 
@@ -218,7 +220,9 @@ export function measureElement(target: any): Promise<ViewMeasurement | null> {
     timeoutId = setTimeout(() => settle(null), 500);
 
     try {
-      const handle = findNodeHandle(target);
+      // findNodeHandle expects React.Component; RNComponentRef is our structural
+      // approximation of the same runtime object, so a cast is necessary here.
+      const handle = findNodeHandle(target as unknown as React.Component);
       if (!handle) {
         settle(null);
         return;
@@ -241,10 +245,10 @@ export function measureElement(target: any): Promise<ViewMeasurement | null> {
  * Find the closest interactive element in the hierarchy
  * (Similar to web's findInteractiveElement but for React Native)
  */
-export function findInteractiveParent(target: any): any {
+export function findInteractiveParent(target: RNComponentRef | null | undefined): RNComponentRef | null {
   if (!target) return null;
 
-  let current = target;
+  let current: RNComponentRef | undefined = target;
   let depth = 0;
   const maxDepth = 5;
 
@@ -262,7 +266,7 @@ export function findInteractiveParent(target: any): any {
     }
 
     // Move up the tree
-    current = current._owner || current.return;
+    current = current._owner ?? current.return;
     depth++;
   }
 
@@ -270,7 +274,11 @@ export function findInteractiveParent(target: any): any {
 }
 
 /**
- * Convert extracted element info to core ElementInfo format
+ * Convert RN-specific ExtractedElementInfo to the canonical ElementInfo from @gremlin/session.
+ *
+ * Normalizes React Native's `testID` (capital D) to the session package's `testId` (lowercase d).
+ * The `testID` casing is kept only at the RN boundary where `View.props.testID` is read;
+ * all downstream code uses `testId` for consistency with the session schema.
  */
 export function toElementInfo(extracted: ExtractedElementInfo): Omit<ElementInfo, 'bounds'> {
   return {

@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { mergeSpecs } from './merger';
-import type { Route } from './types.js';
+import { mergeSpecs } from './merger.ts';
+import type { Route } from './types.ts';
 import type { GremlinSession, NavigationEvent } from '@gremlin/session';
 import { EventTypeEnum } from '@gremlin/session';
 

@@ -7,9 +7,11 @@
 
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Hono } from 'hono';
-import { registerApiRoutes, parsePerfQueryParams } from './routes';
-import type { StorageAdapter, PerformanceAggregation, PerformanceTimeline, PerfSortKey } from './routes';
-import type { SessionListResult, SessionSummary } from './types';
+import { registerApiRoutes } from './routes.ts';
+import type { StorageAdapter, PerformanceAggregation, PerformanceTimeline } from './routes.ts';
+import { parsePerfQueryParams } from './query-params.ts';
+import type { PerfSortKey } from './perf-types.ts';
+import type { SessionListResult, SessionSummary } from './types.ts';
 import type { GremlinSession } from '@gremlin/session';
 
 // ============================================================================
@@ -92,6 +94,15 @@ class MockStorage implements StorageAdapter {
     return this.sessions.delete(id);
   }
 
+  async appendSessionEvents(id: string, events: unknown[]): Promise<boolean> {
+    if (this.shouldFail) throw new Error('Storage error');
+    const session = this.sessions.get(id);
+    if (!session) return false;
+    session.events = [...(session.events || []), ...(events as GremlinSession['events'])];
+    this.sessions.set(id, session);
+    return true;
+  }
+
   async listSessionsWithPerf(): Promise<SessionListResult> {
     if (this.shouldFail) throw new Error('Storage error');
     const all = Array.from(this.sessions.keys()).map(id => makeSummary(id));
@@ -124,7 +135,7 @@ let app: Hono;
 function createApp(): Hono {
   storage = new MockStorage();
   app = new Hono();
-  registerApiRoutes(app, () => storage);
+  registerApiRoutes(app, () => storage, { allowUnauthenticated: true });
   return app;
 }
 
@@ -282,6 +293,13 @@ describe('GET /v1/sessions', () => {
     const res = await req('GET', '/v1/sessions?lcp_gt=1000');
     expect(res.status).toBe(200);
   });
+
+  it('rejects invalid limit on perf path consistently with 400', async () => {
+    const res = await req('GET', '/v1/sessions?sort=lcp&limit=abc');
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
 });
 
 // ============================================================================
@@ -355,6 +373,86 @@ describe('GET /v1/sessions/:id/performance', () => {
 });
 
 // ============================================================================
+// Tests: POST /v1/sessions/:id/events
+// ============================================================================
+
+describe('POST /v1/sessions/:id/events', () => {
+  beforeEach(() => createApp());
+
+  it('appends events to an existing session', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    const events = [
+      { dt: 100, type: 0, data: { kind: 'tap', x: 10, y: 20 } },
+      { dt: 200, type: 0, data: { kind: 'tap', x: 30, y: 40 } },
+    ];
+    const res = await req('POST', '/v1/sessions/s1/events', events);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sessionId).toBe('s1');
+    expect(body.appended).toBe(2);
+    // Verify events were actually appended
+    const session = storage.sessions.get('s1')!;
+    expect(session.events.length).toBe(3); // 1 original + 2 appended
+  });
+
+  it('returns 404 for missing session', async () => {
+    const events = [{ dt: 100, type: 0, data: { kind: 'tap', x: 0, y: 0 } }];
+    const res = await req('POST', '/v1/sessions/nonexistent/events', events);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('rejects non-JSON content type with 400', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    const res = await app.request('/v1/sessions/s1/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: '[]',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CONTENT_TYPE');
+  });
+
+  it('rejects non-array body with 400', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    const res = await req('POST', '/v1/sessions/s1/events', { not: 'an array' });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('rejects empty events array with 400', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    const res = await req('POST', '/v1/sessions/s1/events', []);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('rejects invalid event data with 400', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    const events = [{ dt: 'not-a-number' }]; // dt must be a number
+    const res = await req('POST', '/v1/sessions/s1/events', events);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_EVENTS');
+    expect(body.error.details.length).toBeGreaterThan(0);
+  });
+
+  it('returns 500 on storage failure', async () => {
+    storage.sessions.set('s1', makeSession('s1'));
+    storage.shouldFail = true;
+    const events = [{ dt: 100, type: 0, data: { kind: 'tap', x: 0, y: 0 } }];
+    const res = await req('POST', '/v1/sessions/s1/events', events);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+});
+
+// ============================================================================
 // Tests: Error handling
 // ============================================================================
 
@@ -385,67 +483,90 @@ describe('error handling', () => {
 
 describe('parsePerfQueryParams', () => {
   it('parses sort and order', () => {
-    const opts = parsePerfQueryParams({ sort: 'lcp', order: 'desc' });
-    expect(opts.sort).toBe('lcp');
-    expect(opts.order).toBe('desc');
+    const result = parsePerfQueryParams({ sort: 'lcp', order: 'desc' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.sort).toBe('lcp');
+    expect(result.params.order).toBe('desc');
   });
 
   it('ignores invalid sort keys', () => {
-    const opts = parsePerfQueryParams({ sort: 'invalid' });
-    expect(opts.sort).toBeUndefined();
+    const result = parsePerfQueryParams({ sort: 'invalid' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.sort).toBeUndefined();
   });
 
   it('ignores invalid order values', () => {
-    const opts = parsePerfQueryParams({ order: 'sideways' });
-    expect(opts.order).toBeUndefined();
+    const result = parsePerfQueryParams({ order: 'sideways' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.order).toBeUndefined();
   });
 
   it('parses limit and caps at 100', () => {
-    expect(parsePerfQueryParams({ limit: '50' }).limit).toBe(50);
-    expect(parsePerfQueryParams({ limit: '999' }).limit).toBe(100);
+    const r1 = parsePerfQueryParams({ limit: '50' });
+    expect(r1.ok).toBe(true);
+    if (r1.ok) expect(r1.params.limit).toBe(50);
+
+    const r2 = parsePerfQueryParams({ limit: '999' });
+    expect(r2.ok).toBe(true);
+    if (r2.ok) expect(r2.params.limit).toBe(100);
   });
 
-  it('ignores non-numeric limit', () => {
-    expect(parsePerfQueryParams({ limit: 'abc' }).limit).toBeUndefined();
+  it('rejects non-numeric limit consistently with session list parser', () => {
+    const result = parsePerfQueryParams({ limit: 'abc' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('Invalid limit parameter');
   });
 
   it('parses cursor', () => {
-    expect(parsePerfQueryParams({ cursor: 'abc123' }).cursor).toBe('abc123');
+    const result = parsePerfQueryParams({ cursor: 'abc123' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.cursor).toBe('abc123');
   });
 
   it('parses _gt filters', () => {
-    const opts = parsePerfQueryParams({ lcp_gt: '1000' });
-    expect(opts.filters).toHaveLength(1);
-    expect(opts.filters![0]).toEqual({ key: 'lcp', op: 'gt', value: 1000 });
+    const result = parsePerfQueryParams({ lcp_gt: '1000' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.filters).toHaveLength(1);
+    expect(result.params.filters![0]).toEqual({ key: 'lcp', op: 'gt', value: 1000 });
   });
 
   it('parses _lt filters', () => {
-    const opts = parsePerfQueryParams({ cls_lt: '0.1' });
-    expect(opts.filters).toHaveLength(1);
-    expect(opts.filters![0]).toEqual({ key: 'cls', op: 'lt', value: 0.1 });
+    const result = parsePerfQueryParams({ cls_lt: '0.1' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.filters).toHaveLength(1);
+    expect(result.params.filters![0]).toEqual({ key: 'cls', op: 'lt', value: 0.1 });
   });
 
   it('parses multiple filters', () => {
-    const opts = parsePerfQueryParams({ lcp_gt: '1000', cls_lt: '0.25' });
-    expect(opts.filters).toHaveLength(2);
+    const result = parsePerfQueryParams({ lcp_gt: '1000', cls_lt: '0.25' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.filters).toHaveLength(2);
   });
 
   it('ignores unknown filter keys', () => {
-    const opts = parsePerfQueryParams({ unknown_gt: '100' });
-    expect(opts.filters).toBeUndefined();
+    const result = parsePerfQueryParams({ unknown_gt: '100' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.filters).toBeUndefined();
   });
 
   it('ignores non-numeric filter values', () => {
-    const opts = parsePerfQueryParams({ lcp_gt: 'fast' });
-    expect(opts.filters).toBeUndefined();
+    const result = parsePerfQueryParams({ lcp_gt: 'fast' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.filters).toBeUndefined();
   });
 
   it('handles all valid sort keys', () => {
     const keys: PerfSortKey[] = ['lcp', 'cls', 'inp', 'fcp', 'ttfb', 'avgFps', 'minFps',
       'longTasks', 'peakMemory', 'pageLoad', 'duration', 'eventCount', 'startTime'];
     for (const key of keys) {
-      const opts = parsePerfQueryParams({ sort: key });
-      expect(opts.sort).toBe(key);
+      const result = parsePerfQueryParams({ sort: key });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.params.sort).toBe(key);
     }
   });
 });

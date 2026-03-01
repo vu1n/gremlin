@@ -11,8 +11,10 @@
   "scripts": {
     "test": "bun test",
     "script:routes": "bun run src/extractors/routes/expo.script.ts",
-    "script:edge-cases": "bun run src/extractors/routes/expo.edge-cases.script.ts",
-    "demo": "bun run cli.ts ../../examples/expo-app",
+    "test:edge-cases": "bun test src/extractors/routes/__tests__/expo-edge-cases.test.ts",
+    "script:vanilla-web": "bun run scripts/vanilla-web.script.ts",
+    "script:link-discovery": "bun run scripts/link-discovery.script.ts",
+    "demo": "bun run src/bin/cli.ts ../../examples/expo-app",
     "demo:compare": "bun run examples/compare-sessions.ts",
     "demo:merger": "bun run examples/merger.example.ts"
   },

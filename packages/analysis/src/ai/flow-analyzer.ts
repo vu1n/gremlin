@@ -7,23 +7,25 @@
  */
 
 import { z } from 'zod';
-import type { GremlinSession } from '@gremlin/session';
+import { type GremlinSession, SCHEMA_VERSION } from '@gremlin/session';
 import type {
   GremlinSpec,
   State,
   Transition,
   Variable,
   Property,
-  StateId,
-  TransitionId,
   VariableId,
   PropertyId,
   TransitionEvent,
   Predicate,
   PropertyType,
   VariableType,
-} from '../spec/types';
-import { stateId, transitionId } from '../spec/types';
+} from '../spec/types.ts';
+import { stateId, transitionId } from '../spec/types.ts';
+import { formatSessionsForPrompt, formatEvent, parseJsonResponse } from './session-formatter.ts';
+import { callAIProvider } from './providers.ts';
+
+export { formatSessionsForPrompt, formatEvent } from './session-formatter.ts';
 
 // ============================================================================
 // Zod Schemas for AI Response Validation
@@ -164,10 +166,10 @@ export async function analyzeFlows(
 
     try {
       // Call AI provider
-      const rawResponse = await callAIProviderRaw(provider, apiKey, model, prompt);
+      const rawResponse = await callAIProvider(provider, apiKey, prompt, { model });
 
       // Parse JSON
-      const parsed = parseAIResponse(rawResponse);
+      const parsed = parseJsonResponse(rawResponse);
 
       // Validate with Zod
       const validated = validateExtractedSpec(parsed);
@@ -260,15 +262,7 @@ function validateExtractedSpec(data: unknown): ExtractedSpec {
 function buildRetryPrompt(sessionsData: string, errors: ValidationError[], previousResponse: string): string {
   const errorList = errors.map(e => `- ${e.path.join('.')}: ${e.message}`).join('\n');
 
-  return `You are an expert at analyzing user behavior data to infer application state machines.
-
-Given the following user session recordings, analyze the data and extract a formal state machine specification.
-
-## Sessions Data
-
-${sessionsData}
-
-## IMPORTANT: Your previous response had validation errors
+  const retryCorrectionSection = `## IMPORTANT: Your previous response had validation errors
 
 Your previous response:
 \`\`\`json
@@ -280,7 +274,46 @@ ${errorList}
 
 Please fix these issues and provide a corrected response.
 
-## Your Task
+`;
+
+  return [
+    buildPreambleSection(sessionsData),
+    retryCorrectionSection,
+    buildTaskSection(),
+    buildOutputSchemaSection(),
+    'CRITICAL: Ensure all id references are valid. initialState and all transition from/to values MUST match existing state ids.\n\nOutput ONLY the JSON, no other text.',
+  ].join('');
+}
+
+// ============================================================================
+// Prompt Building
+// ============================================================================
+
+function buildExtractionPrompt(sessionsData: string): string {
+  return [
+    buildPreambleSection(sessionsData),
+    buildTaskSection(),
+    buildOutputSchemaSection(),
+    'Be thorough but avoid over-fitting to the exact sessions. The goal is to capture the general behavior model that would work for similar sessions.\n\nOutput ONLY the JSON, no other text.',
+  ].join('');
+}
+
+/** Shared preamble: role description + sessions data. */
+function buildPreambleSection(sessionsData: string): string {
+  return `You are an expert at analyzing user behavior data to infer application state machines.
+
+Given the following user session recordings, analyze the data and extract a formal state machine specification.
+
+## Sessions Data
+
+${sessionsData}
+
+`;
+}
+
+/** Shared task description: what to extract from the sessions. */
+function buildTaskSection(): string {
+  return `## Your Task
 
 Analyze these user sessions and produce a state machine specification with:
 
@@ -295,9 +328,16 @@ Analyze these user sessions and produce a state machine specification with:
 
 4. **Variables**: What variables track state? (e.g., isLoggedIn, cartItemCount, hasPaymentMethod)
 
-5. **Properties**: What invariants should hold? Express as natural language.
+5. **Properties**: What invariants should hold? Express as natural language, e.g.:
+   - "Cannot reach OrderConfirmation without going through Checkout"
+   - "Cannot checkout with empty cart"
 
-## Output Format
+`;
+}
+
+/** Shared output schema: the TypeScript interface the AI must produce. */
+function buildOutputSchemaSection(): string {
+  return `## Output Format
 
 Respond with a JSON object matching this TypeScript interface:
 
@@ -316,7 +356,7 @@ interface ExtractedSpec {
     to: string;        // MUST match a state id
     event: string;     // NON-EMPTY, e.g., "tap:checkout-btn"
     guard?: string;    // optional natural language condition
-    frequency: number; // integer >= 0
+    frequency: number; // integer >= 0, how many sessions had this transition
   }>;
 
   initialState: string;  // MUST match one of the state ids
@@ -333,348 +373,11 @@ interface ExtractedSpec {
     type: "invariant" | "never" | "eventually" | "leads_to";
   }>;
 
-  insights: string[];
+  insights: string[];  // Any interesting patterns you noticed
 }
 \`\`\`
 
-CRITICAL: Ensure all id references are valid. initialState and all transition from/to values MUST match existing state ids.
-
-Output ONLY the JSON, no other text.`;
-}
-
-// ============================================================================
-// Session Formatting
-// ============================================================================
-
-export function formatSessionsForPrompt(sessions: GremlinSession[]): string {
-  const lines: string[] = [];
-
-  for (let i = 0; i < sessions.length; i++) {
-    const session = sessions[i];
-    lines.push(`### Session ${i + 1}`);
-    lines.push(`Device: ${session.header.device.platform} ${session.header.device.osVersion}`);
-    lines.push(`App: ${session.header.app.name} v${session.header.app.version}`);
-
-    // Session-level performance summary
-    if (session.performance) {
-      const p = session.performance;
-      const parts: string[] = [];
-      if (p.webVitals) {
-        const wv = p.webVitals;
-        if (wv.lcp !== undefined) parts.push(`LCP=${wv.lcp}ms`);
-        if (wv.cls !== undefined) parts.push(`CLS=${wv.cls}`);
-        if (wv.inp !== undefined) parts.push(`INP=${wv.inp}ms`);
-        if (wv.fcp !== undefined) parts.push(`FCP=${wv.fcp}ms`);
-        if (wv.ttfb !== undefined) parts.push(`TTFB=${wv.ttfb}ms`);
-      }
-      if (p.avgFps !== undefined) parts.push(`avgFPS=${p.avgFps}`);
-      if (p.minFps !== undefined) parts.push(`minFPS=${p.minFps}`);
-      if (p.longTaskCount !== undefined) parts.push(`longTasks=${p.longTaskCount}`);
-      if (p.peakMemoryUsage !== undefined) parts.push(`peakMem=${p.peakMemoryUsage}MB`);
-      if (p.pageLoadTime !== undefined) parts.push(`pageLoad=${p.pageLoadTime}ms`);
-      if (parts.length > 0) {
-        lines.push(`Performance: ${parts.join(', ')}`);
-      }
-    }
-
-    lines.push('');
-    lines.push('Events:');
-
-    let timestamp = 0;
-    for (const event of session.events) {
-      timestamp += event.dt;
-      const eventStr = formatEvent(session, event, timestamp);
-      lines.push(`  ${eventStr}`);
-    }
-
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-export function formatEvent(
-  session: GremlinSession,
-  event: GremlinSession['events'][0],
-  timestamp: number
-): string {
-  const timeStr = `[${(timestamp / 1000).toFixed(1)}s]`;
-  const data = event.data;
-
-  // Build perf suffix if performance data is present
-  let perfSuffix = '';
-  if (event.perf) {
-    const parts: string[] = [];
-    if (event.perf.fps !== undefined) parts.push(`fps=${event.perf.fps}`);
-    if (event.perf.jsThreadLag !== undefined && event.perf.jsThreadLag > 50) parts.push(`lag=${event.perf.jsThreadLag}ms`);
-    if (event.perf.longTaskCount !== undefined && event.perf.longTaskCount > 0) parts.push(`longTasks=${event.perf.longTaskCount}`);
-    if (parts.length > 0) perfSuffix = ` [perf: ${parts.join(', ')}]`;
-  }
-
-  if ('kind' in data) {
-    switch (data.kind) {
-      case 'tap':
-      case 'double_tap':
-      case 'long_press': {
-        const element = data.elementIndex !== undefined && data.elementIndex < session.elements.length
-          ? session.elements[data.elementIndex]
-          : null;
-        const elementStr = element
-          ? `${element.testId || element.accessibilityLabel || element.text || 'unknown'} (${element.type})`
-          : `(${data.x}, ${data.y})`;
-        return `${timeStr} ${data.kind.toUpperCase()}: ${elementStr}${perfSuffix}`;
-      }
-
-      case 'swipe':
-        return `${timeStr} SWIPE: ${data.direction} (${data.duration}ms)${perfSuffix}`;
-
-      case 'scroll':
-        return `${timeStr} SCROLL: deltaY=${data.deltaY}${perfSuffix}`;
-
-      case 'input': {
-        const inputElement = data.elementIndex !== undefined && data.elementIndex < session.elements.length
-          ? session.elements[data.elementIndex]
-          : null;
-        const inputTarget = inputElement?.testId || inputElement?.accessibilityLabel || 'unknown';
-        return `${timeStr} INPUT: ${inputTarget} = "${data.masked ? '***' : data.value}"${perfSuffix}`;
-      }
-
-      case 'navigation':
-        return `${timeStr} NAVIGATE: ${data.navType} → ${data.screen}${perfSuffix}`;
-
-      case 'network':
-        return `${timeStr} NETWORK: ${data.method} ${data.url} (${data.phase})${perfSuffix}`;
-
-      case 'error':
-        return `${timeStr} ERROR: ${data.message}${perfSuffix}`;
-
-      case 'app_state':
-        return `${timeStr} APP_STATE: ${data.state}${perfSuffix}`;
-
-      default:
-        return `${timeStr} UNKNOWN: ${JSON.stringify(data)}${perfSuffix}`;
-    }
-  }
-
-  return `${timeStr} EVENT: ${JSON.stringify(data)}${perfSuffix}`;
-}
-
-// ============================================================================
-// Prompt Building
-// ============================================================================
-
-function buildExtractionPrompt(sessionsData: string): string {
-  return `You are an expert at analyzing user behavior data to infer application state machines.
-
-Given the following user session recordings, analyze the data and extract a formal state machine specification.
-
-## Sessions Data
-
-${sessionsData}
-
-## Your Task
-
-Analyze these user sessions and produce a state machine specification with:
-
-1. **States**: Identify all meaningful application states. Don't just list screens - identify the semantic state (e.g., "cart_empty" vs "cart_with_items" vs "checkout_ready")
-
-2. **Transitions**: Identify all transitions between states, including:
-   - The trigger event (tap, input, navigation)
-   - The source and destination states
-   - Any guards/conditions (e.g., "cart must have items")
-
-3. **Initial State**: What state does the app start in?
-
-4. **Variables**: What variables track state? (e.g., isLoggedIn, cartItemCount, hasPaymentMethod)
-
-5. **Properties**: What invariants should hold? Express as natural language, e.g.:
-   - "Cannot reach OrderConfirmation without going through Checkout"
-   - "Cannot checkout with empty cart"
-
-## Output Format
-
-Respond with a JSON object matching this TypeScript interface:
-
-\`\`\`typescript
-interface ExtractedSpec {
-  states: Array<{
-    id: string;
-    name: string;
-    description: string;
-    isTerminal: boolean;
-  }>;
-
-  transitions: Array<{
-    id: string;
-    from: string;  // state id
-    to: string;    // state id
-    event: string; // e.g., "tap:checkout-btn"
-    guard?: string; // natural language condition
-    frequency: number; // how many sessions had this transition
-  }>;
-
-  initialState: string;
-
-  variables: Array<{
-    name: string;
-    type: "boolean" | "number" | "string";
-    description: string;
-  }>;
-
-  properties: Array<{
-    name: string;
-    description: string;
-    type: "invariant" | "never" | "eventually" | "leads_to";
-  }>;
-
-  insights: string[]; // Any interesting patterns you noticed
-}
-\`\`\`
-
-Be thorough but avoid over-fitting to the exact sessions. The goal is to capture the general behavior model that would work for similar sessions.
-
-Output ONLY the JSON, no other text.`;
-}
-
-// ============================================================================
-// AI Provider Calls
-// ============================================================================
-
-/**
- * Call AI provider and return raw string response (for validation pipeline)
- */
-async function callAIProviderRaw(
-  provider: 'anthropic' | 'openai' | 'gemini',
-  apiKey: string,
-  model: string | undefined,
-  prompt: string
-): Promise<string> {
-  switch (provider) {
-    case 'anthropic':
-      return callAnthropicRaw(apiKey, model || 'claude-sonnet-4-20250514', prompt);
-    case 'openai':
-      return callOpenAIRaw(apiKey, model || 'gpt-4o', prompt);
-    case 'gemini':
-      return callGeminiRaw(apiKey, model || 'gemini-2.0-flash', prompt);
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
-
-async function callAnthropicRaw(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new Error(`Anthropic API error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
-  }
-
-  const data = await response.json();
-  const content = data.content?.[0]?.text;
-
-  if (!content) {
-    throw new Error('No content in Anthropic response');
-  }
-
-  return content;
-}
-
-async function callOpenAIRaw(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error('No content in OpenAI response');
-  }
-
-  return content;
-}
-
-async function callGeminiRaw(
-  apiKey: string,
-  model: string,
-  prompt: string
-): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192 },
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!content) {
-    throw new Error('No content in Gemini response');
-  }
-
-  return content;
-}
-
-/**
- * Parse raw AI response string into JSON object.
- * Handles markdown code blocks that AI models often include.
- */
-function parseAIResponse(rawOutput: string): unknown {
-  // Handle potential markdown code blocks
-  const jsonMatch = rawOutput.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawOutput.trim();
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch (e) {
-    throw new Error(`Failed to parse AI response as JSON: ${e}\n\nRaw response:\n${rawOutput.slice(0, 500)}...`);
-  }
+`;
 }
 
 // ============================================================================
@@ -730,7 +433,7 @@ function convertToGremlinSpec(
 
   return {
     name: appName,
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     variables,
     states,
     initialState: stateId(extracted.initialState),

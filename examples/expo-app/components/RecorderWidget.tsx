@@ -1,85 +1,21 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  Alert,
-  Share,
   Modal,
   ScrollView,
 } from 'react-native';
-import { useGremlin } from '../lib/gremlin';
+import { useRecorderActions } from '../hooks/useRecorderActions';
 
 export function RecorderWidget() {
-  const { isRecording, startRecording, stopRecording, getSession, getEventCount } = useGremlin();
+  const { isRecording, recorder, toggleRecording, exportSession, getStats } =
+    useRecorderActions();
   const [expanded, setExpanded] = useState(false);
   const [showStats, setShowStats] = useState(false);
 
-  const handleToggleRecording = () => {
-    if (isRecording) {
-      const session = stopRecording();
-      if (session) {
-        const count = session.events?.length || 0;
-        Alert.alert(
-          'Recording Stopped',
-          `Captured ${count} events. Tap "Export" to save.`
-        );
-      }
-    } else {
-      startRecording();
-    }
-  };
-
-  const handleExportSession = async () => {
-    const session = getSession();
-    if (!session || !session.events?.length) {
-      Alert.alert('No Session', 'No recorded session to export.');
-      return;
-    }
-
-    const sessionJson = JSON.stringify(session, null, 2);
-    console.log('=== GREMLIN SESSION ===');
-    console.log(sessionJson);
-    console.log('=== END SESSION ===');
-
-    try {
-      await Share.share({
-        message: sessionJson,
-        title: `gremlin-session-${session.header?.sessionId || 'unknown'}.json`,
-      });
-    } catch (error) {
-      Alert.alert('Exported', 'Session logged to console. Check Metro logs.');
-    }
-  };
-
-  const handleViewStats = () => {
-    setShowStats(true);
-  };
-
-  const getStats = () => {
-    const session = getSession();
-    if (!session) return null;
-
-    const events = session.events || [];
-    const elements = session.elements || [];
-    const eventTypes: Record<string, number> = {};
-    events.forEach((e) => {
-      const type = e.type || 'unknown';
-      eventTypes[type] = (eventTypes[type] || 0) + 1;
-    });
-
-    return {
-      eventCount: events.length,
-      elementCount: elements.length,
-      eventTypes,
-      duration: session.header?.endTime
-        ? Math.round((Date.now() - session.header.startTime) / 1000)
-        : 0,
-    };
-  };
-
-  const eventCount = getEventCount();
+  const eventCount = recorder?.getEventCount() ?? 0;
 
   if (!expanded) {
     // Collapsed: just show a small floating button
@@ -117,18 +53,18 @@ export function RecorderWidget() {
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.button, isRecording ? styles.stopButton : styles.startButton]}
-            onPress={handleToggleRecording}
+            onPress={toggleRecording}
           >
             <Text style={styles.buttonText}>
               {isRecording ? 'Stop' : 'Start'}
             </Text>
           </Pressable>
 
-          <Pressable style={styles.button} onPress={handleViewStats}>
+          <Pressable style={styles.button} onPress={() => setShowStats(true)}>
             <Text style={styles.buttonText}>Stats</Text>
           </Pressable>
 
-          <Pressable style={styles.button} onPress={handleExportSession}>
+          <Pressable style={styles.button} onPress={exportSession}>
             <Text style={styles.buttonText}>Export</Text>
           </Pressable>
         </View>

@@ -12,34 +12,20 @@ import type {
   GremlinEvent,
   DeviceInfo,
   AppInfo,
-  InputEvent,
-  NavigationEvent,
-  NetworkEvent,
+  UploadResult,
+  LocalTransportConfig,
+  StreamingTransportConfig,
 } from '@gremlin/session';
 import {
   BaseRecorder,
   type BaseRecorderConfig,
-  LocalTransport,
-  type LocalTransportConfig,
-  StreamingTransport,
-  type StreamingTransportConfig,
 } from '@gremlin/session';
-import { EventTypeEnum } from '@gremlin/session';
-import { captureElement, findInteractiveElement } from './element-capture';
-import { WebPerformanceMonitor } from './performance-monitor';
-
-// ============================================================================
-// Config
-// ============================================================================
+import { captureElement, findInteractiveElement } from './element-capture.ts';
+import { TransportCapability, PerformanceCapability } from './capabilities.ts';
 
 export interface RecorderConfig extends BaseRecorderConfig {
-  /** App name */
   appName: string;
-
-  /** App version */
   appVersion?: string;
-
-  /** Build number */
   appBuild?: string;
 
   /** Auto-start recording on page load */
@@ -51,13 +37,11 @@ export interface RecorderConfig extends BaseRecorderConfig {
   /** Performance sample interval (ms) */
   performanceInterval?: number;
 
-  /** Mask sensitive inputs */
   maskInputs?: boolean;
 
   /** Emit events to callback (for real-time streaming) */
   onEvent?: (event: GremlinEvent) => void;
 
-  /** Custom rrweb options */
   rrwebOptions?: Partial<recordOptions<eventWithTime>>;
 
   /** Persist session to sessionStorage for multi-page apps */
@@ -99,10 +83,6 @@ export interface RecorderConfig extends BaseRecorderConfig {
   streaming?: boolean | StreamingTransportConfig;
 }
 
-// ============================================================================
-// Web Recorder
-// ============================================================================
-
 /**
  * Web session recorder.
  * Extends BaseRecorder with:
@@ -132,25 +112,18 @@ export class GremlinRecorder extends BaseRecorder {
 
   private stopRrweb: (() => void) | null = null;
   private navigationStartTime = 0;
-  private performanceMonitor: WebPerformanceMonitor | null = null;
   private originalPushState: typeof history.pushState | null = null;
   private originalReplaceState: typeof history.replaceState | null = null;
-
-  /** Network interception */
-  private originalFetch: typeof window.fetch | null = null;
-  private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
-  private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
-  private networkRequestCounter = 0;
-  private xhrMetadata = new WeakMap<XMLHttpRequest, { method: string; url: string }>();
 
   /** rrweb events for session replay */
   private rrwebEvents: eventWithTime[] = [];
 
-  /** Local transport for sending sessions to gremlin dev */
-  private transport: LocalTransport | null = null;
+  /** Capability: transport (local + streaming) lifecycle */
+  private transportCap: TransportCapability;
 
-  /** Streaming transport for real-time event streaming */
-  private streamingTransport: StreamingTransport | null = null;
+  /** Capability: performance monitoring lifecycle */
+  private performanceCap: PerformanceCapability;
+
   private scrollPositions = new WeakMap<EventTarget, { x: number; y: number }>();
   private documentScrollPos = { x: 0, y: 0 };
   private beforeUnloadHandler: (() => void) | null = null;
@@ -163,11 +136,7 @@ export class GremlinRecorder extends BaseRecorder {
       debug: config.debug ?? false,
     });
 
-    // Determine if transport is enabled (default: 'local' in development)
     const transportEnabled = config.transport !== false;
-    const transportConfig = config.transport === 'local' || config.transport === undefined
-      ? {}
-      : config.transport;
 
     this.webConfig = {
       ...config,
@@ -185,21 +154,24 @@ export class GremlinRecorder extends BaseRecorder {
       autoUpload: config.autoUpload ?? transportEnabled,
     };
 
-    // Initialize transport (defaults to local on localhost:3334)
-    if (transportEnabled && typeof transportConfig === 'object') {
-      this.transport = new LocalTransport(transportConfig);
-    }
-
-    // Initialize streaming transport if enabled
-    if (config.streaming) {
-      const streamingConfig = typeof config.streaming === 'object' ? config.streaming : {};
-      this.streamingTransport = new StreamingTransport({
-        // Inherit endpoint from transport config so streaming goes to the same server
-        endpoint: typeof transportConfig === 'object' ? (transportConfig as any).endpoint : undefined,
+    // Register transport capability (manages LocalTransport + StreamingTransport lifecycle)
+    this.transportCap = new TransportCapability(
+      {
+        transport: config.transport,
+        streaming: config.streaming,
+        autoUpload: config.autoUpload ?? transportEnabled,
         debug: config.debug,
-        ...streamingConfig,
-      });
-    }
+      },
+      () => this.getSession(),
+    );
+    this.registerCapability(this.transportCap);
+
+    // Register performance capability (manages WebPerformanceMonitor lifecycle)
+    this.performanceCap = new PerformanceCapability(
+      { capturePerformance: config.capturePerformance },
+      (provider) => { this.performanceProvider = provider; },
+    );
+    this.registerCapability(this.performanceCap);
 
     if (this.webConfig.autoStart) {
       if (document.readyState === 'complete') {
@@ -276,15 +248,10 @@ export class GremlinRecorder extends BaseRecorder {
       return;
     }
 
+    // BaseRecorder creates session, then calls start() on all registered capabilities
+    // (TransportCapability starts streaming, PerformanceCapability starts monitor)
     super.start();
-    this.networkRequestCounter = 0;
     this.navigationStartTime = Date.now();
-
-    // Start streaming transport if enabled
-    const session = this.getSession();
-    if (this.streamingTransport && session) {
-      this.streamingTransport.start(session.header.sessionId);
-    }
 
     // Setup event listeners
     this.setupEventListeners();
@@ -292,12 +259,8 @@ export class GremlinRecorder extends BaseRecorder {
     // Start rrweb recording
     this.startRrwebRecording();
 
-    // Start performance sampling
-    if (this.webConfig.capturePerformance) {
-      this.startPerformanceSampling();
-    }
-
-    console.log(`GremlinRecorder: Started session ${session?.header.sessionId}${this.streamingTransport ? ' (streaming)' : ''}`);
+    const session = this.getSession();
+    console.log(`GremlinRecorder: Started session ${session?.header.sessionId}${this.transportCap.isStreaming() ? ' (streaming)' : ''}`);
   }
 
   override stop(): GremlinSession | null {
@@ -306,8 +269,8 @@ export class GremlinRecorder extends BaseRecorder {
       return null;
     }
 
-    // Capture session-level performance before stopping the monitor
-    let sessionPerformance = this.performanceMonitor?.getSessionPerformance();
+    // Capture session-level performance before base.stop() cleans up the provider
+    const sessionPerformance = this.performanceCap.getMonitor()?.getSessionPerformance();
 
     // Stop rrweb
     if (this.stopRrweb) {
@@ -315,25 +278,15 @@ export class GremlinRecorder extends BaseRecorder {
       this.stopRrweb = null;
     }
 
-    // Stop performance monitor
-    if (this.performanceMonitor) {
-      this.performanceMonitor.stop();
-      this.performanceMonitor = null;
-    }
-
-    // Remove event listeners
+    // Remove DOM event listeners (network interceptor cleanup handled by base)
     this.removeEventListeners();
 
     // Restore history API
     this.restoreHistoryApi();
 
-    // BaseRecorder flushes batcher — flushed events get pushed to streaming transport
+    // BaseRecorder stops capabilities (reverse order: performance then transport),
+    // stops perf provider, uninstalls network interceptor, flushes batcher
     const session = super.stop();
-
-    // Stop streaming AFTER super.stop() so batcher-flushed events are included
-    if (this.streamingTransport) {
-      this.streamingTransport.stop();
-    }
 
     if (session) {
       // Add session-level performance data
@@ -342,7 +295,7 @@ export class GremlinRecorder extends BaseRecorder {
       }
 
       // Snapshot rrweb events at stop time to avoid async upload races
-      (session as any).rrwebEvents = [...this.rrwebEvents];
+      session.rrwebEvents = [...this.rrwebEvents];
 
       console.log(
         `GremlinRecorder: Stopped session ${session.header.sessionId} - ` +
@@ -351,8 +304,8 @@ export class GremlinRecorder extends BaseRecorder {
       );
 
       // Auto-upload if enabled (skip if streaming, already sent)
-      if (this.webConfig.autoUpload && this.transport && !this.streamingTransport) {
-        this.upload(session);
+      if (this.transportCap.shouldUploadOnStop()) {
+        this.transportCap.uploadSession(session);
       }
     }
 
@@ -362,52 +315,17 @@ export class GremlinRecorder extends BaseRecorder {
   /**
    * Upload a session to the configured transport.
    * Called automatically on stop() if autoUpload is enabled.
+   * Delegates to TransportCapability which owns the upload workflow.
    */
-  public async upload(session?: GremlinSession): Promise<boolean> {
-    if (!this.transport) {
-      console.warn('GremlinRecorder: No transport configured');
-      return false;
-    }
-
+  public async upload(session?: GremlinSession): Promise<UploadResult> {
     const sessionToUpload = session || this.getSession();
-    if (!sessionToUpload) {
-      console.warn('GremlinRecorder: No session to upload');
-      return false;
-    }
-
-    // Prefer rrweb snapshot from stop() over live array (which may have been cleared/grown)
-    const fullSession = {
-      ...sessionToUpload,
-      rrwebEvents: (sessionToUpload as any).rrwebEvents || [...this.rrwebEvents],
-    };
-
-    try {
-      const result = await this.transport.upload(fullSession as GremlinSession);
-      if (result.success) {
-        console.log(`GremlinRecorder: Session uploaded via ${result.method}`);
-        return true;
-      } else {
-        console.warn(`GremlinRecorder: Upload failed - ${result.error}`);
-        return false;
-      }
-    } catch (err) {
-      console.error('GremlinRecorder: Upload error', err);
-      return false;
-    }
+    return this.transportCap.uploadSession(sessionToUpload ?? undefined, [...this.rrwebEvents]);
   }
 
   override destroy(): void {
     if (this.stopRrweb) {
       this.stopRrweb();
       this.stopRrweb = null;
-    }
-    if (this.performanceMonitor) {
-      this.performanceMonitor.stop();
-      this.performanceMonitor = null;
-    }
-    if (this.streamingTransport) {
-      this.streamingTransport.stop();
-      this.streamingTransport = null;
     }
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
@@ -419,19 +337,15 @@ export class GremlinRecorder extends BaseRecorder {
     }
     this.removeEventListeners();
     this.restoreHistoryApi();
+    // BaseRecorder.destroy() calls destroy() on all capabilities (transport, performance)
+    // and cleans up performanceProvider, networkInterceptor, batcher
     super.destroy();
   }
 
-  /**
-   * Check if currently recording.
-   */
   public isActive(): boolean {
     return this.isRecording();
   }
 
-  /**
-   * Export session as JSON.
-   */
   public exportJson(): string | null {
     const session = this.getSession();
     if (!session) return null;
@@ -460,9 +374,6 @@ export class GremlinRecorder extends BaseRecorder {
     };
   }
 
-  /**
-   * Export replay data as JSON string.
-   */
   public exportReplayJson(): string | null {
     const data = this.exportForReplay();
     if (!data) return null;
@@ -474,23 +385,19 @@ export class GremlinRecorder extends BaseRecorder {
   // ========================================================================
 
   /**
-   * Override to auto-attach performance data and stream events.
+   * Override to stream events to the streaming transport.
+   * Performance enrichment is handled by BaseRecorder via performanceProvider.
    */
   protected override addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
-    // Auto-attach perf sample if monitor is active and event doesn't already have one
-    let enrichedEvent = event;
-    if (this.performanceMonitor && !event.perf) {
-      enrichedEvent = { ...event, perf: this.performanceMonitor.getCurrentSample() };
-    }
-
-    // Call parent implementation
-    super.addEventToSession(enrichedEvent);
+    // Call parent implementation (handles perf enrichment, dt, session push)
+    super.addEventToSession(event);
 
     // Stream event if enabled
-    if (this.streamingTransport && this.isRecording() && this.session) {
+    const streamingTransport = this.transportCap.getStreamingTransport();
+    if (streamingTransport && this.isRecording() && this.session) {
       const lastEvent = this.session.events[this.session.events.length - 1];
       if (lastEvent) {
-        this.streamingTransport.pushEvent(lastEvent);
+        streamingTransport.pushEvent(lastEvent);
       }
     }
   }
@@ -515,8 +422,9 @@ export class GremlinRecorder extends BaseRecorder {
           this.rrwebEvents.push(event);
         }
         // Stream rrweb event if enabled
-        if (this.streamingTransport) {
-          this.streamingTransport.pushRrwebEvent(event);
+        const streamingTransport = this.transportCap.getStreamingTransport();
+        if (streamingTransport) {
+          streamingTransport.pushRrwebEvent(event);
         }
         // Also emit to callback if provided
         this.webConfig.onRrwebEvent?.(event);
@@ -554,13 +462,22 @@ export class GremlinRecorder extends BaseRecorder {
     this.interceptHistoryApi();
 
     if (this.webConfig.captureNetwork) {
-      this.interceptFetch();
-      this.interceptXhr();
+      const transport = this.transportCap.getTransport();
+      const transportEndpoint = transport
+        ? transport.getEndpoint()
+        : 'http://localhost:3334';
+      this.installNetworkInterceptor({
+        addEvent: (event) => this.addEventToSession(event),
+        isRecording: () => this.isRecording(),
+        ignorePatterns: this.webConfig.networkIgnorePatterns,
+        transportEndpoint,
+        urlBase: window.location.origin,
+      });
     }
   }
 
   private removeEventListeners(): void {
-    this.restoreNetworkInterception();
+    // Note: network interceptor cleanup is handled by BaseRecorder.stop()/destroy()
     document.removeEventListener('click', this.handleClick, true);
     document.removeEventListener('input', this.handleInput, true);
     document.removeEventListener('change', this.handleChange, true);
@@ -697,7 +614,7 @@ export class GremlinRecorder extends BaseRecorder {
     if (!this.isRecording()) return;
 
     this.navigationStartTime = Date.now();
-    this.performanceMonitor?.markNavigation();
+    this.performanceProvider?.markNavigation();
     this.recordNavigation(document.title, navType, undefined, window.location.href);
   }
 
@@ -766,251 +683,6 @@ export class GremlinRecorder extends BaseRecorder {
       history.replaceState = this.originalReplaceState;
       this.originalReplaceState = null;
     }
-  }
-
-  // ========================================================================
-  // Network Interception
-  // ========================================================================
-
-  private sanitizeUrl(raw: string): string {
-    try {
-      const url = new URL(raw, window.location.origin);
-      return url.origin + url.pathname;
-    } catch {
-      return raw;
-    }
-  }
-
-  private shouldIgnoreUrl(url: string): boolean {
-    // Skip data: and blob: URLs
-    if (url.startsWith('data:') || url.startsWith('blob:')) return true;
-
-    // Skip requests to the gremlin dev server
-    const transportEndpoint = this.transport
-      ? (this.transport as any).config?.endpoint ?? 'http://localhost:3334'
-      : 'http://localhost:3334';
-    try {
-      const reqUrl = new URL(url, window.location.origin);
-      const devUrl = new URL(transportEndpoint);
-      if (reqUrl.hostname === devUrl.hostname && reqUrl.port === devUrl.port) {
-        return true;
-      }
-    } catch {
-      // If parsing fails, check for localhost:3334 substring
-      if (url.includes('localhost:3334')) return true;
-    }
-
-    // Check user-provided ignore patterns
-    for (const pattern of this.webConfig.networkIgnorePatterns) {
-      if (url.includes(pattern)) return true;
-    }
-
-    return false;
-  }
-
-  private nextRequestId(): string {
-    return `net_${++this.networkRequestCounter}`;
-  }
-
-  private interceptFetch(): void {
-    this.originalFetch = window.fetch;
-    const recorder = this;
-
-    const wrappedFetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-      const url = typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-      const method = init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET';
-
-      if (recorder.shouldIgnoreUrl(url)) {
-        return recorder.originalFetch!(input, init);
-      }
-
-      const requestId = recorder.nextRequestId();
-      const sanitizedUrl = recorder.sanitizeUrl(url);
-      const startTime = Date.now();
-
-      // Record start event
-      if (recorder.isRecording()) {
-        recorder.addEventToSession({
-          type: EventTypeEnum.NETWORK,
-          data: {
-            kind: 'network',
-            requestId,
-            method: method.toUpperCase(),
-            url: sanitizedUrl,
-            phase: 'start',
-          } as NetworkEvent,
-        });
-      }
-
-      return recorder.originalFetch!(input, init).then(
-        (response) => {
-          if (recorder.isRecording()) {
-            recorder.addEventToSession({
-              type: EventTypeEnum.NETWORK,
-              data: {
-                kind: 'network',
-                requestId,
-                method: method.toUpperCase(),
-                url: sanitizedUrl,
-                status: response.status,
-                duration: Date.now() - startTime,
-                phase: 'end',
-              } as NetworkEvent,
-            });
-          }
-          return response;
-        },
-        (error) => {
-          if (recorder.isRecording()) {
-            recorder.addEventToSession({
-              type: EventTypeEnum.NETWORK,
-              data: {
-                kind: 'network',
-                requestId,
-                method: method.toUpperCase(),
-                url: sanitizedUrl,
-                duration: Date.now() - startTime,
-                phase: 'error',
-                error: error instanceof Error ? error.message : String(error),
-              } as NetworkEvent,
-            });
-          }
-          throw error;
-        }
-      );
-    };
-
-    // Copy static properties from original fetch (e.g., preconnect)
-    Object.assign(wrappedFetch, this.originalFetch);
-    window.fetch = wrappedFetch as typeof window.fetch;
-  }
-
-  private interceptXhr(): void {
-    this.originalXhrOpen = XMLHttpRequest.prototype.open;
-    this.originalXhrSend = XMLHttpRequest.prototype.send;
-    const recorder = this;
-
-    XMLHttpRequest.prototype.open = function (
-      method: string,
-      url: string | URL,
-      ...rest: any[]
-    ) {
-      recorder.xhrMetadata.set(this, { method, url: typeof url === 'string' ? url : url.href });
-      return recorder.originalXhrOpen!.apply(this, [method, url, ...rest] as any);
-    };
-
-    XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-      const meta = recorder.xhrMetadata.get(this);
-      const method: string = meta?.method ?? 'GET';
-      const url: string = meta?.url ?? '';
-
-      if (recorder.shouldIgnoreUrl(url)) {
-        return recorder.originalXhrSend!.call(this, body);
-      }
-
-      const requestId = recorder.nextRequestId();
-      const sanitizedUrl = recorder.sanitizeUrl(url);
-      const startTime = Date.now();
-
-      if (recorder.isRecording()) {
-        recorder.addEventToSession({
-          type: EventTypeEnum.NETWORK,
-          data: {
-            kind: 'network',
-            requestId,
-            method: method.toUpperCase(),
-            url: sanitizedUrl,
-            phase: 'start',
-          } as NetworkEvent,
-        });
-      }
-
-      this.addEventListener('load', () => {
-        if (recorder.isRecording()) {
-          recorder.addEventToSession({
-            type: EventTypeEnum.NETWORK,
-            data: {
-              kind: 'network',
-              requestId,
-              method: method.toUpperCase(),
-              url: sanitizedUrl,
-              status: this.status,
-              duration: Date.now() - startTime,
-              phase: 'end',
-            } as NetworkEvent,
-          });
-        }
-      });
-
-      this.addEventListener('error', () => {
-        if (recorder.isRecording()) {
-          recorder.addEventToSession({
-            type: EventTypeEnum.NETWORK,
-            data: {
-              kind: 'network',
-              requestId,
-              method: method.toUpperCase(),
-              url: sanitizedUrl,
-              duration: Date.now() - startTime,
-              phase: 'error',
-              error: 'Network request failed',
-            } as NetworkEvent,
-          });
-        }
-      });
-
-      this.addEventListener('abort', () => {
-        if (recorder.isRecording()) {
-          recorder.addEventToSession({
-            type: EventTypeEnum.NETWORK,
-            data: {
-              kind: 'network',
-              requestId,
-              method: method.toUpperCase(),
-              url: sanitizedUrl,
-              duration: Date.now() - startTime,
-              phase: 'error',
-              error: 'Request aborted',
-            } as NetworkEvent,
-          });
-        }
-      });
-
-      return recorder.originalXhrSend!.call(this, body);
-    };
-  }
-
-  private restoreNetworkInterception(): void {
-    if (this.originalFetch) {
-      window.fetch = this.originalFetch;
-      this.originalFetch = null;
-    }
-    if (this.originalXhrOpen) {
-      XMLHttpRequest.prototype.open = this.originalXhrOpen;
-      this.originalXhrOpen = null;
-    }
-    if (this.originalXhrSend) {
-      XMLHttpRequest.prototype.send = this.originalXhrSend;
-      this.originalXhrSend = null;
-    }
-  }
-
-  // ========================================================================
-  // Performance Capture
-  // ========================================================================
-
-  private startPerformanceSampling(): void {
-    this.performanceMonitor = new WebPerformanceMonitor({
-      trackFPS: true,
-      trackLongTasks: true,
-      trackWebVitals: true,
-      trackMemory: true,
-    });
-    this.performanceMonitor.start();
   }
 
   // ========================================================================
@@ -1083,20 +755,22 @@ export class GremlinRecorder extends BaseRecorder {
    * Protected method to allow subclasses to restore state.
    */
   protected restoreSession(session: GremlinSession, rrwebEventsData?: unknown[]): void {
-    // Access protected members from base class
-    (this as any).session = session;
-    (this as any).recording = true;
-    (this as any).lastEventTimestamp = Date.now();
-    (this as any).elementMap = new Map();
-
     // Rebuild element map using same key generation as BaseRecorder.getOrCreateElement
+    const elementMap = new Map<string, number>();
     let unknownCount = 0;
     session.elements.forEach((el, idx) => {
       const key = el.testId || el.accessibilityLabel || el.text || `_unknown_${unknownCount++}`;
-      (this as any).elementMap.set(key, idx);
+      elementMap.set(key, idx);
     });
-    // Sync the unknownElementCounter so new elements don't collide
-    (this as any).unknownElementCounter = unknownCount;
+
+    // Restore base class state via typed method
+    this.restoreState({
+      session,
+      recording: true,
+      lastEventTimestamp: Date.now(),
+      elementMap,
+      unknownElementCounter: unknownCount,
+    });
 
     // Restore rrweb events if available
     if (Array.isArray(rrwebEventsData)) {
@@ -1104,9 +778,6 @@ export class GremlinRecorder extends BaseRecorder {
     }
   }
 
-  /**
-   * Clear persisted session from storage.
-   */
   public clearStorage(): void {
     try {
       sessionStorage.removeItem(this.webConfig.storageKey);
@@ -1145,19 +816,14 @@ export class GremlinRecorder extends BaseRecorder {
     this.setupEventListeners();
     this.startRrwebRecording();
 
-    if (this.webConfig.capturePerformance) {
-      this.startPerformanceSampling();
-    }
-
-    // Start streaming transport if enabled
-    const session = this.getSession();
-    if (this.streamingTransport && session) {
-      this.streamingTransport.start(session.header.sessionId);
-    }
+    // Start capabilities for the resumed session (transport streaming, performance monitor)
+    this.transportCap.start();
+    this.performanceCap.start();
 
     // Record navigation event for the new page
     this.recordNavigation(document.title, 'push', undefined, window.location.href);
 
+    const session = this.getSession();
     console.log(`GremlinRecorder: Resumed session ${session?.header.sessionId} on ${window.location.pathname}`);
     return true;
   }

@@ -7,10 +7,7 @@
  */
 
 import type { GremlinSession, SessionPerformance } from '@gremlin/session';
-
-// ============================================================================
-// Session types
-// ============================================================================
+import { GremlinSessionSchema } from './validation.ts';
 
 export interface SessionListResult {
   sessions: SessionSummary[];
@@ -34,10 +31,6 @@ export interface SessionSummary {
   performance?: SessionPerformance;
 }
 
-// ============================================================================
-// API response types
-// ============================================================================
-
 export interface ErrorResponse {
   error: {
     code: string;
@@ -57,71 +50,31 @@ export interface SessionDeleteResponse {
   id: string;
 }
 
-// ============================================================================
-// Validation
-// ============================================================================
-
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
 
+/**
+ * Validate a session using the canonical Zod schema.
+ *
+ * Returns a ValidationResult with structured error messages for API responses.
+ * Uses GremlinSessionSchema from ./validation.ts as the single source of truth.
+ */
 export function validateSession(data: unknown): ValidationResult {
-  const errors: string[] = [];
+  const result = GremlinSessionSchema.safeParse(data);
 
-  if (!data || typeof data !== 'object') {
-    return { valid: false, errors: ['Session must be an object'] };
+  if (result.success) {
+    return { valid: true, errors: [] };
   }
 
-  const session = data as Record<string, unknown>;
+  const errors = result.error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? issue.path.join('.') : 'root';
+    return `${path}: ${issue.message}`;
+  });
 
-  if (!session.header || typeof session.header !== 'object') {
-    errors.push('Missing or invalid header');
-  } else {
-    const header = session.header as Record<string, unknown>;
-
-    if (!header.sessionId || typeof header.sessionId !== 'string') {
-      errors.push('Missing or invalid header.sessionId');
-    }
-
-    if (header.startTime == null || typeof header.startTime !== 'number') {
-      errors.push('Missing or invalid header.startTime');
-    }
-
-    if (!header.device || typeof header.device !== 'object') {
-      errors.push('Missing or invalid header.device');
-    }
-
-    if (!header.app || typeof header.app !== 'object') {
-      errors.push('Missing or invalid header.app');
-    }
-
-    if (header.schemaVersion == null || typeof header.schemaVersion !== 'number') {
-      errors.push('Missing or invalid header.schemaVersion');
-    }
-  }
-
-  if (!Array.isArray(session.elements)) {
-    errors.push('Missing or invalid elements array');
-  }
-
-  if (!Array.isArray(session.events)) {
-    errors.push('Missing or invalid events array');
-  }
-
-  if (!Array.isArray(session.screenshots)) {
-    errors.push('Missing or invalid screenshots array');
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-  };
+  return { valid: false, errors };
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 export function createSessionSummary(
   id: string,

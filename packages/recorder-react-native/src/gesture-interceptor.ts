@@ -4,7 +4,7 @@
  * Intercepts React Native's touch responder system to capture taps, swipes, long presses, etc.
  */
 
-import type { GestureResponderEvent, PanResponder } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import type { TouchData } from './types';
 
 export type GestureType = 'tap' | 'double_tap' | 'long_press' | 'swipe';
@@ -14,7 +14,8 @@ export interface GestureEvent {
   x: number;
   y: number;
   timestamp: number;
-  target?: any;
+  /** React Native touch event target (opaque native ref) */
+  target?: unknown;
   // For swipes
   startX?: number;
   startY?: number;
@@ -24,19 +25,16 @@ export interface GestureEvent {
   direction?: 'up' | 'down' | 'left' | 'right';
 }
 
-export interface GestureInterceptorConfig {
+interface GestureInterceptorConfig {
   onGesture: (gesture: GestureEvent) => void;
   minSwipeDistance?: number;
   longPressDuration?: number;
   doubleTapDelay?: number;
 }
 
-/**
- * GestureInterceptor class to detect and track gestures
- */
 export class GestureInterceptor {
   private config: Required<GestureInterceptorConfig>;
-  private lastTap: { x: number; y: number; timestamp: number; target?: any } | null = null;
+  private lastTap: { x: number; y: number; timestamp: number; target?: unknown } | null = null;
   private pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
   private touchStart: TouchData | null = null;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,15 +50,12 @@ export class GestureInterceptor {
     };
   }
 
-  /**
-   * Handle touch start event
-   */
   public handleTouchStart = (event: GestureResponderEvent): void => {
     const touch = event.nativeEvent;
     const timestamp = Date.now();
 
     this.touchStart = {
-      identifier: (touch.identifier as any) ?? 0,
+      identifier: Number(touch.identifier) || 0,
       pageX: touch.pageX,
       pageY: touch.pageY,
       timestamp,
@@ -76,9 +71,6 @@ export class GestureInterceptor {
     }, this.config.longPressDuration);
   };
 
-  /**
-   * Handle touch move event
-   */
   public handleTouchMove = (event: GestureResponderEvent): void => {
     if (!this.touchStart) return;
 
@@ -98,9 +90,6 @@ export class GestureInterceptor {
     }
   };
 
-  /**
-   * Handle touch end event
-   */
   public handleTouchEnd = (event: GestureResponderEvent): void => {
     this.cancelLongPress();
 
@@ -127,18 +116,12 @@ export class GestureInterceptor {
     this.isSwiping = false;
   };
 
-  /**
-   * Handle touch cancel event
-   */
   public handleTouchCancel = (): void => {
     this.cancelLongPress();
     this.touchStart = null;
     this.isSwiping = false;
   };
 
-  /**
-   * Cleanup timers
-   */
   public cleanup(): void {
     this.cancelLongPress();
     this.cancelPendingTap();
@@ -150,7 +133,7 @@ export class GestureInterceptor {
   // Private Methods - Gesture Detection
   // ========================================================================
 
-  private handleTap(x: number, y: number, timestamp: number, target?: any): void {
+  private handleTap(x: number, y: number, timestamp: number, target?: unknown): void {
     // Check for double tap
     if (this.lastTap) {
       const timeSinceLastTap = timestamp - this.lastTap.timestamp;

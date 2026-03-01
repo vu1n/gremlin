@@ -7,12 +7,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { ServerTransport } from './server';
-import type { GremlinSession } from '../types';
-
-// ============================================================================
-// Mock Server
-// ============================================================================
+import { ServerTransport } from './server.ts';
+import type { GremlinSession } from '../types.ts';
 
 let mockServer: ReturnType<typeof Bun.serve>;
 let mockUrl: string;
@@ -72,10 +68,6 @@ beforeEach(() => {
   requestCount = 0;
 });
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function makeSession(id?: string): GremlinSession {
   return {
     header: {
@@ -100,10 +92,6 @@ function makeTransport(overrides?: Partial<ConstructorParameters<typeof ServerTr
     ...overrides,
   });
 }
-
-// ============================================================================
-// Tests: Successful Upload
-// ============================================================================
 
 describe('upload', () => {
   it('uploads session and returns success with sessionId', async () => {
@@ -133,10 +121,6 @@ describe('upload', () => {
   });
 });
 
-// ============================================================================
-// Tests: 4xx Errors (No Retry)
-// ============================================================================
-
 describe('4xx errors', () => {
   it('returns failure immediately on 400', async () => {
     responseStatus = 400;
@@ -163,10 +147,6 @@ describe('4xx errors', () => {
     expect(requestCount).toBe(1);
   });
 });
-
-// ============================================================================
-// Tests: 5xx Errors (Retry)
-// ============================================================================
 
 describe('5xx errors', () => {
   it('retries on 500 and eventually fails', async () => {
@@ -211,10 +191,6 @@ describe('5xx errors', () => {
   });
 });
 
-// ============================================================================
-// Tests: Network Errors
-// ============================================================================
-
 describe('network errors', () => {
   it('returns failure when server unreachable', async () => {
     const transport = new ServerTransport({
@@ -229,10 +205,6 @@ describe('network errors', () => {
   });
 });
 
-// ============================================================================
-// Tests: URL Normalization
-// ============================================================================
-
 describe('URL normalization', () => {
   it('strips trailing slashes from serverUrl', async () => {
     const transport = new ServerTransport({
@@ -245,10 +217,6 @@ describe('URL normalization', () => {
     expect(result.success).toBe(true);
   });
 });
-
-// ============================================================================
-// Tests: checkServer
-// ============================================================================
 
 describe('checkServer', () => {
   it('returns true when server responds OK', async () => {

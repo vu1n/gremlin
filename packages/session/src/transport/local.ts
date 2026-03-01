@@ -7,11 +7,7 @@
  * 3. Buffered sessions can be flushed when server becomes available
  */
 
-import type { GremlinSession } from '../types';
-
-// ============================================================================
-// Types
-// ============================================================================
+import type { GremlinSession } from '../types.ts';
 
 export interface LocalTransportConfig {
   /** Local server endpoint (default: http://localhost:3334) */
@@ -23,13 +19,12 @@ export interface LocalTransportConfig {
   /** Storage key prefix for localStorage fallback */
   storagePrefix?: string;
 
-  /** Debug logging */
   debug?: boolean;
 
-  /** Retry attempts for server upload (default: 2) */
+  /** Default: 2 */
   retryAttempts?: number;
 
-  /** Base retry delay in ms (default: 500) */
+  /** ms, default: 500 */
   retryDelayMs?: number;
 }
 
@@ -39,12 +34,22 @@ export interface TransportResult {
   error?: string;
 }
 
-// ============================================================================
-// LocalTransport
-// ============================================================================
+type LogFn = (msg: string, ...args: unknown[]) => void;
+
+function createLogger(tag: string, debug: boolean): { log: LogFn; error: LogFn } {
+  if (!debug) {
+    const noop: LogFn = () => {};
+    return { log: noop, error: noop };
+  }
+  return {
+    log: (msg, ...args) => console.log(`[${tag}] ${msg}`, ...args),
+    error: (msg, ...args) => console.error(`[${tag}] ${msg}`, ...args),
+  };
+}
 
 export class LocalTransport {
   private config: Required<LocalTransportConfig>;
+  private debug: { log: LogFn; error: LogFn };
   private serverAvailable: boolean | null = null;
 
   constructor(config: LocalTransportConfig = {}) {
@@ -56,11 +61,14 @@ export class LocalTransport {
       retryAttempts: config.retryAttempts ?? 2,
       retryDelayMs: config.retryDelayMs ?? 500,
     };
+    this.debug = createLogger('LocalTransport', this.config.debug);
   }
 
-  /**
-   * Upload a session to the local dev server or localStorage fallback.
-   */
+  /** Return the configured endpoint URL. */
+  getEndpoint(): string {
+    return this.config.endpoint;
+  }
+
   async upload(session: GremlinSession): Promise<TransportResult> {
     // Try server first
     const serverResult = await this.tryServer(session);
@@ -80,9 +88,6 @@ export class LocalTransport {
     };
   }
 
-  /**
-   * Check if local dev server is available.
-   */
   async checkServer(): Promise<boolean> {
     try {
       const response = await fetch(`${this.config.endpoint}/health`, {
@@ -122,22 +127,17 @@ export class LocalTransport {
           flushed++;
         }
       } catch (e) {
-        if (this.config.debug) {
-          console.error('[LocalTransport] Failed to flush session', key, e);
+          this.debug.error('Failed to flush session', key, e);
         }
       }
-    }
 
-    if (this.config.debug && flushed > 0) {
-      console.log(`[LocalTransport] Flushed ${flushed} stored sessions`);
+    if (flushed > 0) {
+      this.debug.log(`Flushed ${flushed} stored sessions`);
     }
 
     return flushed;
   }
 
-  /**
-   * Get count of sessions stored in localStorage.
-   */
   getStoredSessionCount(): number {
     if (typeof localStorage === 'undefined') return 0;
 
@@ -146,14 +146,10 @@ export class LocalTransport {
     ).length;
   }
 
-  // ========================================================================
-  // Private
-  // ========================================================================
-
   private async tryServer(session: GremlinSession): Promise<TransportResult> {
     try {
       return await this.withRetry(async () => {
-        const response = await fetch(`${this.config.endpoint}/session`, {
+        const response = await fetch(`${this.config.endpoint}/v1/sessions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -164,12 +160,10 @@ export class LocalTransport {
 
         if (response.ok) {
           this.serverAvailable = true;
-          if (this.config.debug) {
-            console.log('[LocalTransport] Session uploaded to server', {
-              sessionId: session.header.sessionId,
-              events: session.events.length,
-            });
-          }
+          this.debug.log('Session uploaded to server', {
+            sessionId: session.header.sessionId,
+            events: session.events.length,
+          });
           return { success: true, method: 'server' };
         }
 
@@ -187,9 +181,7 @@ export class LocalTransport {
     } catch (error) {
       this.serverAvailable = false;
       const message = error instanceof Error ? error.message : 'Unknown error';
-      if (this.config.debug) {
-        console.log('[LocalTransport] Server unavailable', message);
-      }
+      this.debug.log('Server unavailable', message);
       return { success: false, method: 'server', error: message };
     }
   }
@@ -212,9 +204,7 @@ export class LocalTransport {
         if (i === maxAttempts - 1) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           this.serverAvailable = false;
-          if (this.config.debug) {
-            console.log('[LocalTransport] Server unavailable', message);
-          }
+          this.debug.log('Server unavailable', message);
           return { success: false, method: 'server', error: message };
         }
       }
@@ -242,12 +232,10 @@ export class LocalTransport {
       const key = `${this.config.storagePrefix}${session.header.sessionId}`;
       localStorage.setItem(key, JSON.stringify(session));
 
-      if (this.config.debug) {
-        console.log('[LocalTransport] Session saved to localStorage', {
-          sessionId: session.header.sessionId,
-          key,
-        });
-      }
+      this.debug.log('Session saved to localStorage', {
+        sessionId: session.header.sessionId,
+        key,
+      });
 
       return { success: true, method: 'storage' };
     } catch (e) {

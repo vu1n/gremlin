@@ -9,16 +9,11 @@ export {
   type ErrorResponse,
   type SessionUploadResponse,
   type SessionDeleteResponse,
-  type ValidationResult,
   validateSession,
   createSessionSummary,
 } from '@gremlin/server-shared';
 
-// ============================================================================
-// Cloudflare-specific types
-// ============================================================================
-
-export interface R2ObjectBody {
+interface R2ObjectBody {
   key: string;
   size: number;
   customMetadata?: Record<string, string>;
@@ -27,13 +22,13 @@ export interface R2ObjectBody {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-export interface R2Object {
+interface R2Object {
   key: string;
   size: number;
   customMetadata?: Record<string, string>;
 }
 
-export interface R2ListResult {
+interface R2ListResult {
   objects: R2Object[];
   truncated: boolean;
   cursor?: string;

@@ -11,16 +11,19 @@
  * Use @gremlin/session for client-side SDK.
  */
 
-export const VERSION = '0.0.1';
+// Re-export shared constants from @gremlin/session
+export { SCHEMA_VERSION, SDK_VERSION } from '@gremlin/session';
+/** @deprecated Use SDK_VERSION from @gremlin/session instead */
+export { SDK_VERSION as VERSION } from '@gremlin/session';
 
-// GremlinSpec types
-export * from './spec/index';
+// --- Spec types ---
+export * from './spec/index.ts';
 
-// AI Analysis
-export * from './ai/index';
+// --- AI analysis ---
+export * from './ai/index.ts';
 
-// Test Generators
-export * from './generators/index';
+// --- Generators ---
+export * from './generators/index.ts';
 
-// Session Importers
-export * from './importers/index';
+// --- Importers ---
+export * from './importers/index.ts';

@@ -7,23 +7,19 @@
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import type { GremlinSession } from '@gremlin/session';
 import { extractErrorPatterns, generateErrorTests } from '@gremlin/analysis';
 import type { ErrorPattern } from '@gremlin/analysis';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { output, exitWithError, type OutputOptions } from '../output.ts';
+import { loadSessions } from './shared/sessions.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface ErrorsOptions extends OutputOptions {
+interface ErrorsOptions extends OutputOptions {
   input?: string;
   minOccurrences?: number;
   since?: string;
   generate?: boolean;
 }
 
-export interface ErrorPatternSummary {
+interface ErrorPatternSummary {
   fingerprint: string;
   message: string;
   errorType: string;
@@ -33,15 +29,16 @@ export interface ErrorPatternSummary {
   coveredByTest: boolean;
 }
 
-export interface ErrorsResult {
+interface ErrorsResult {
   patterns: ErrorPatternSummary[];
   totalErrors: number;
   uniquePatterns: number;
   coveredByTests: number;
   uncoveredPatterns: number;
+  coverageScanErrors?: number;
 }
 
-export interface GenerateErrorsResult {
+interface GenerateErrorsResult {
   errorPatterns: Array<{
     fingerprint: string;
     message: string;
@@ -53,21 +50,13 @@ export interface GenerateErrorsResult {
   outputDir: string;
 }
 
-// ============================================================================
-// Command
-// ============================================================================
-
-export async function errors(options: ErrorsOptions): Promise<ErrorsResult | GenerateErrorsResult | null> {
+export function errors(options: ErrorsOptions): Promise<ErrorsResult | GenerateErrorsResult | null> {
   if (options.generate) {
     return generateErrors(options);
   }
 
   return listErrors(options);
 }
-
-// ============================================================================
-// List Errors
-// ============================================================================
 
 async function listErrors(options: ErrorsOptions): Promise<ErrorsResult | null> {
   const input = options.input ?? '.gremlin/sessions';
@@ -87,7 +76,7 @@ async function listErrors(options: ErrorsOptions): Promise<ErrorsResult | null> 
     return result;
   }
 
-  const sessions = loadSessions(input, options.since);
+  const sessions = await loadSessions(input, { since: options.since });
 
   if (sessions.length === 0) {
     const result: ErrorsResult = {
@@ -111,15 +100,18 @@ async function listErrors(options: ErrorsOptions): Promise<ErrorsResult | null> 
     ? new Set(readdirSync(errorTestDir).filter((f) => f.endsWith('.spec.ts')))
     : new Set<string>();
 
-  const patterns: ErrorPatternSummary[] = filtered.map((p) => ({
-    fingerprint: p.fingerprint,
-    message: p.message,
-    errorType: p.errorType,
-    fatal: p.fatal,
-    occurrences: p.occurrences,
-    sessionIds: p.sessionIds,
-    coveredByTest: existingTestFiles.size > 0 && hasTestForPattern(p, errorTestDir),
-  }));
+  let coverageScanErrors = 0;
+  const patterns: ErrorPatternSummary[] = filtered.map((p) => {
+    if (existingTestFiles.size === 0) {
+      return { fingerprint: p.fingerprint, message: p.message, errorType: p.errorType, fatal: p.fatal, occurrences: p.occurrences, sessionIds: p.sessionIds, coveredByTest: false };
+    }
+    const coverageResult = hasTestForPattern(p, errorTestDir);
+    if (coverageResult.scanError) {
+      coverageScanErrors++;
+      console.warn(`Warning: could not scan test coverage for pattern "${p.message.substring(0, 40)}": ${coverageResult.scanError}`);
+    }
+    return { fingerprint: p.fingerprint, message: p.message, errorType: p.errorType, fatal: p.fatal, occurrences: p.occurrences, sessionIds: p.sessionIds, coveredByTest: coverageResult.covered };
+  });
 
   const coveredByTests = patterns.filter((p) => p.coveredByTest).length;
   const totalErrors = filtered.reduce((sum, p) => sum + p.occurrences, 0);
@@ -130,6 +122,7 @@ async function listErrors(options: ErrorsOptions): Promise<ErrorsResult | null> 
     uniquePatterns: patterns.length,
     coveredByTests,
     uncoveredPatterns: patterns.length - coveredByTests,
+    ...(coverageScanErrors > 0 ? { coverageScanErrors } : {}),
   };
 
   if (output('errors', result, options)) return result;
@@ -161,10 +154,6 @@ async function listErrors(options: ErrorsOptions): Promise<ErrorsResult | null> 
   return result;
 }
 
-// ============================================================================
-// Generate Errors (--generate shorthand)
-// ============================================================================
-
 async function generateErrors(options: ErrorsOptions): Promise<GenerateErrorsResult | null> {
   const input = options.input ?? '.gremlin/sessions';
   const minOccurrences = options.minOccurrences ?? 1;
@@ -172,21 +161,13 @@ async function generateErrors(options: ErrorsOptions): Promise<GenerateErrorsRes
   const outputDir = '.gremlin/tests/error-regression';
 
   if (!existsSync(input)) {
-    if (outputError('errors', [`Sessions directory not found: ${input}`], options)) {
-      process.exit(1);
-    }
-    console.error(`Sessions directory not found: ${input}`);
-    process.exit(1);
+    exitWithError('errors', `Sessions directory not found: ${input}`, options);
   }
 
-  const sessions = loadSessions(input, options.since);
+  const sessions = await loadSessions(input, { since: options.since });
 
   if (sessions.length === 0) {
-    if (outputError('errors', ['No sessions found'], options)) {
-      process.exit(1);
-    }
-    console.error('No sessions found');
-    process.exit(1);
+    exitWithError('errors', 'No sessions found', options);
   }
 
   if (!json) {
@@ -249,45 +230,19 @@ async function generateErrors(options: ErrorsOptions): Promise<GenerateErrorsRes
   return result;
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
+type CoverageResult = { covered: boolean; scanError?: string };
 
-function loadSessions(dir: string, since?: string): GremlinSession[] {
-  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-  const sessions: GremlinSession[] = [];
-  const sinceTime = since ? new Date(since).getTime() : 0;
-
-  for (const file of files) {
-    try {
-      const content = readFileSync(join(dir, file), 'utf-8');
-      const session = JSON.parse(content) as GremlinSession;
-
-      if (sinceTime && (session.header?.startTime ?? 0) < sinceTime) {
-        continue;
-      }
-
-      sessions.push(session);
-    } catch {
-      // Skip unreadable files
-    }
-  }
-
-  return sessions;
-}
-
-function hasTestForPattern(pattern: ErrorPattern, testDir: string): boolean {
-  // Check if any test file in the directory references this pattern's fingerprint
+function hasTestForPattern(pattern: ErrorPattern, testDir: string): CoverageResult {
   try {
     const files = readdirSync(testDir).filter((f) => f.endsWith('.spec.ts'));
     for (const file of files) {
       const content = readFileSync(join(testDir, file), 'utf-8');
       if (content.includes(pattern.message.substring(0, 40))) {
-        return true;
+        return { covered: true };
       }
     }
-  } catch {
-    // Directory not readable
+  } catch (err) {
+    return { covered: false, scanError: err instanceof Error ? err.message : 'Unknown read error' };
   }
-  return false;
+  return { covered: false };
 }

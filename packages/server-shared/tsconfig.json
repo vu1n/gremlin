@@ -9,6 +9,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": true,
     "types": ["bun-types"]
   },
   "include": ["src"]

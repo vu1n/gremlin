@@ -1,11 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, rmSync, readFileSync } from 'node:fs';
-import { generatePerfTests, type PerfBaseline, type PerfTestGeneratorOptions } from './perf-test-generator';
+import { generatePerfTests, type PerfBaseline } from './perf-test-generator.ts';
 import type { GremlinSession } from '@gremlin/session';
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
 
 const TEST_OUTPUT_DIR = '/tmp/gremlin-perf-test-output';
 
@@ -71,10 +67,6 @@ function makeSession(id: string): GremlinSession {
     screenshots: [],
   };
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 describe('Performance Test Generator', () => {
   beforeEach(() => {

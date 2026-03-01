@@ -2,7 +2,7 @@
  * Coverage Analysis - Calculate coverage delta between AST and observed sessions
  */
 
-import type { GremlinSpecWithSources, StateWithSource, TransitionWithSource } from './merger.js';
+import type { GremlinSpecWithSources, StateWithSource, TransitionWithSource } from './merger.ts';
 import type { StateId } from '@gremlin/analysis';
 
 /**

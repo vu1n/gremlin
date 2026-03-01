@@ -10,7 +10,7 @@
  * storage (R2 vs filesystem) and calls registerApiRoutes().
  */
 
-import type { Hono } from 'hono';
+import type { Hono, Context, MiddlewareHandler } from 'hono';
 import type { GremlinSession, PerformanceSample } from '@gremlin/session';
 import type {
   SessionListResult,
@@ -18,25 +18,12 @@ import type {
   ErrorResponse,
   SessionUploadResponse,
   SessionDeleteResponse,
-} from './types';
-import { validateSession } from './types';
-
-// ============================================================================
-// Performance query types (previously duplicated in both storage modules)
-// ============================================================================
-
-export type PerfSortKey =
-  | 'lcp' | 'cls' | 'inp' | 'fcp' | 'ttfb'
-  | 'avgFps' | 'minFps' | 'longTasks' | 'peakMemory' | 'pageLoad'
-  | 'duration' | 'eventCount' | 'startTime';
-
-export interface PerfQueryOptions {
-  sort?: PerfSortKey;
-  order?: 'asc' | 'desc';
-  limit?: number;
-  cursor?: string;
-  filters?: { key: PerfSortKey; op: 'gt' | 'lt'; value: number }[];
-}
+} from './types.ts';
+import type { PerfQueryOptions } from './perf-types.ts';
+import { validateSession } from './types.ts';
+import { GremlinEventSchema } from './validation.ts';
+import { parsePerfQueryParams, parseSessionListParams } from './query-params.ts';
+import { registerErrorHandlers, registerSecurityHeaders } from './middleware.ts';
 
 export interface PerformanceAggregation {
   sessionCount: number;
@@ -66,62 +53,13 @@ export interface PerformanceTimelineEntry {
 }
 
 // ============================================================================
-// parsePerfQueryParams (pure function, no storage dependency)
-// ============================================================================
-
-const PERF_FILTER_MAP: Record<string, PerfSortKey> = {
-  lcp: 'lcp', cls: 'cls', inp: 'inp', fcp: 'fcp', ttfb: 'ttfb',
-  avgFps: 'avgFps', minFps: 'minFps', longTasks: 'longTasks',
-  peakMemory: 'peakMemory', pageLoad: 'pageLoad',
-  duration: 'duration', eventCount: 'eventCount',
-};
-
-function isValidSortKey(key: string): key is PerfSortKey {
-  return [
-    'lcp', 'cls', 'inp', 'fcp', 'ttfb',
-    'avgFps', 'minFps', 'longTasks', 'peakMemory', 'pageLoad',
-    'duration', 'eventCount', 'startTime',
-  ].includes(key);
-}
-
-export function parsePerfQueryParams(query: Record<string, string>): PerfQueryOptions {
-  const opts: PerfQueryOptions = {};
-
-  if (query.sort && isValidSortKey(query.sort)) {
-    opts.sort = query.sort;
-  }
-  if (query.order === 'asc' || query.order === 'desc') {
-    opts.order = query.order;
-  }
-  if (query.limit) {
-    const parsed = parseInt(query.limit, 10);
-    if (!isNaN(parsed) && parsed > 0) opts.limit = Math.min(parsed, 100);
-  }
-  if (query.cursor) {
-    opts.cursor = query.cursor;
-  }
-
-  const filters: PerfQueryOptions['filters'] = [];
-  for (const [param, val] of Object.entries(query)) {
-    const gtMatch = param.match(/^(\w+)_gt$/);
-    const ltMatch = param.match(/^(\w+)_lt$/);
-    const match = gtMatch || ltMatch;
-    if (!match) continue;
-    const filterName = match[1];
-    const sortKey = PERF_FILTER_MAP[filterName];
-    if (!sortKey) continue;
-    const num = parseFloat(val);
-    if (isNaN(num)) continue;
-    filters.push({ key: sortKey, op: gtMatch ? 'gt' : 'lt', value: num });
-  }
-
-  if (filters.length > 0) opts.filters = filters;
-  return opts;
-}
-
-// ============================================================================
 // Storage adapter interface
 // ============================================================================
+
+export interface SessionAppendEventsResponse {
+  sessionId: string;
+  appended: number;
+}
 
 export interface StorageAdapter {
   storeSession(session: GremlinSession): Promise<string>;
@@ -129,6 +67,7 @@ export interface StorageAdapter {
   getSessionMetadata(id: string): Promise<SessionSummary | null>;
   listSessions(limit: number, cursor?: string): Promise<SessionListResult>;
   deleteSession(id: string): Promise<boolean>;
+  appendSessionEvents(id: string, events: unknown[]): Promise<boolean>;
   listSessionsWithPerf(opts: PerfQueryOptions): Promise<SessionListResult>;
   getPerformanceAggregation(): Promise<PerformanceAggregation>;
   getSessionPerformance(id: string): Promise<PerformanceTimeline | null>;
@@ -139,20 +78,33 @@ export interface StorageAdapter {
 // ============================================================================
 
 /**
- * Register all /v1/* API routes on a Hono app.
+ * Auth options for API route registration.
  *
- * Middleware (CORS, auth, compression) and platform-specific routes
- * (health, metrics) are NOT registered here — those stay in each server.
+ * Secure-by-default: callers must either provide an authMiddleware
+ * or explicitly opt out with `allowUnauthenticated: true`.
+ */
+export type ApiRouteAuthOptions =
+  | { authMiddleware: MiddlewareHandler }
+  | { allowUnauthenticated: true };
+
+/**
+ * Register all /v1/* API routes on a Hono app.
  *
  * @param app - Hono app instance
  * @param getStorage - Factory that returns a StorageAdapter for each request.
  *   CF Workers passes `(c) => adapter(c.env)` since env is per-request.
  *   Self-hosted passes `() => staticAdapter` since config is fixed.
+ * @param auth - Auth configuration. Must provide either `authMiddleware`
+ *   or explicitly declare `allowUnauthenticated: true`.
  */
-export function registerApiRoutes(
-  app: Hono<any>,
-  getStorage: (c: any) => StorageAdapter
+export function registerApiRoutes<E extends Record<string, unknown> = Record<string, unknown>>(
+  app: Hono<E>,
+  getStorage: (c: Context<E>) => StorageAdapter,
+  auth: ApiRouteAuthOptions
 ): void {
+  if ('authMiddleware' in auth) {
+    app.use('/v1/*', auth.authMiddleware);
+  }
   // --------------------------------------------------------------------------
   // Performance routes
   // --------------------------------------------------------------------------
@@ -168,7 +120,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to aggregate performance data',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -201,7 +152,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to get session performance',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -249,7 +199,6 @@ export function registerApiRoutes(
 
       const session = sessionData as GremlinSession;
       const sessionId = await getStorage(c).storeSession(session);
-      // Use Content-Length from request to avoid redundant serialization
       const contentLength = parseInt(c.req.header('content-length') || '0', 10);
       const size = contentLength > 0 ? contentLength : 0;
 
@@ -269,7 +218,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to upload session',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -336,7 +284,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to retrieve session',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -356,32 +303,40 @@ export function registerApiRoutes(
         Object.keys(queryObj).some((k) => k.endsWith('_gt') || k.endsWith('_lt'));
 
       if (hasPerfParams) {
-        const perfOpts = parsePerfQueryParams(queryObj);
-        const result = await getStorage(c).listSessionsWithPerf(perfOpts);
-        return c.json(result);
-      }
-
-      const limitParam = c.req.query('limit');
-      const cursor = c.req.query('cursor');
-
-      let limit = 20;
-
-      if (limitParam) {
-        const parsed = parseInt(limitParam, 10);
-        if (isNaN(parsed) || parsed < 1) {
+        const perfResult = parsePerfQueryParams(queryObj);
+        if (!perfResult.ok) {
           return c.json<ErrorResponse>(
             {
               error: {
                 code: 'INVALID_REQUEST',
-                message: 'Invalid limit parameter',
+                message: perfResult.error,
               },
             },
             400
           );
         }
-        limit = Math.min(parsed, 100);
+        const result = await getStorage(c).listSessionsWithPerf(perfResult.params);
+        return c.json(result);
       }
 
+      const listResult = parseSessionListParams({
+        limit: c.req.query('limit'),
+        cursor: c.req.query('cursor'),
+      });
+
+      if (!listResult.ok) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_REQUEST',
+              message: listResult.error,
+            },
+          },
+          400
+        );
+      }
+
+      const { limit, cursor } = listResult.params;
       const result = await getStorage(c).listSessions(limit, cursor);
 
       return c.json(result);
@@ -393,7 +348,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to list sessions',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -443,7 +397,6 @@ export function registerApiRoutes(
           error: {
             code: 'INTERNAL_ERROR',
             message: 'Failed to delete session',
-            // details omitted to avoid leaking internals
           },
         },
         500
@@ -452,58 +405,140 @@ export function registerApiRoutes(
   });
 
   // --------------------------------------------------------------------------
-  // Error handlers
+  // Session event append
   // --------------------------------------------------------------------------
 
-  app.notFound((c) => {
-    return c.json<ErrorResponse>(
-      {
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Endpoint not found',
+  app.post('/v1/sessions/:id/events', async (c) => {
+    try {
+      const id = c.req.param('id');
+
+      if (!id) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_REQUEST',
+              message: 'Session ID is required',
+            },
+          },
+          400
+        );
+      }
+
+      const contentType = c.req.header('Content-Type') || '';
+
+      if (!contentType.includes('application/json')) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_CONTENT_TYPE',
+              message: 'Content-Type must be application/json',
+            },
+          },
+          400
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_JSON',
+              message: 'Request body must be valid JSON',
+            },
+          },
+          400
+        );
+      }
+
+      if (!Array.isArray(body)) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_REQUEST',
+              message: 'Request body must be a JSON array of events',
+            },
+          },
+          400
+        );
+      }
+
+      if (body.length === 0) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_REQUEST',
+              message: 'Events array must not be empty',
+            },
+          },
+          400
+        );
+      }
+
+      // Validate each event against the schema
+      const validationErrors: string[] = [];
+      for (let i = 0; i < body.length; i++) {
+        const result = GremlinEventSchema.safeParse(body[i]);
+        if (!result.success) {
+          for (const issue of result.error.issues) {
+            const path = issue.path.length > 0 ? `events[${i}].${issue.path.join('.')}` : `events[${i}]`;
+            validationErrors.push(`${path}: ${issue.message}`);
+          }
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'INVALID_EVENTS',
+              message: 'Event validation failed',
+              details: validationErrors,
+            },
+          },
+          400
+        );
+      }
+
+      const found = await getStorage(c).appendSessionEvents(id, body);
+
+      if (!found) {
+        return c.json<ErrorResponse>(
+          {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Session not found',
+            },
+          },
+          404
+        );
+      }
+
+      return c.json<SessionAppendEventsResponse>({
+        sessionId: id,
+        appended: body.length,
+      });
+    } catch (error) {
+      console.error('Error appending session events:', error);
+
+      return c.json<ErrorResponse>(
+        {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Failed to append events to session',
+          },
         },
-      },
-      404
-    );
+        500
+      );
+    }
   });
 
-  app.onError((err, c) => {
-    console.error('Unhandled error:', err);
+  // --------------------------------------------------------------------------
+  // Error handlers & security middleware
+  // --------------------------------------------------------------------------
 
-    return c.json<ErrorResponse>(
-      {
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: 'Internal server error',
-        },
-      },
-      500
-    );
-  });
-
-  // Add security headers middleware
-  app.use('/*', async (c, next) => {
-    await next();
-
-    // Security headers for all responses
-    c.header('X-Content-Type-Options', 'nosniff');
-    c.header('X-Frame-Options', 'DENY');
-    c.header('X-XSS-Protection', '1; mode=block');
-    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-
-    // Content Security Policy (basic, allow data: for images)
-    c.header(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self';"
-    );
-
-    // Referrer Policy
-    c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-    // Permissions Policy (restrict browser features)
-    c.header(
-      'Permissions-Policy',
-      'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()'
-    );
-  });
+  registerErrorHandlers(app);
+  registerSecurityHeaders(app);
 }

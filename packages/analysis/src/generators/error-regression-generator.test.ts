@@ -5,7 +5,7 @@ import {
   generateErrorTests,
   computeFingerprint,
   normalizeMessage,
-} from './error-regression-generator';
+} from './error-regression-generator.ts';
 import type { GremlinSession } from '@gremlin/session';
 import { EventTypeEnum } from '@gremlin/session';
 

@@ -4,7 +4,7 @@
 
 import { mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import type { ServerConfig } from './types';
+import type { ServerConfig } from './types.ts';
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_DATA_DIR = './.gremlin/data';

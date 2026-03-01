@@ -8,6 +8,18 @@ import type { NavigationRef } from './types';
 
 export type NavigationType = 'push' | 'pop' | 'replace' | 'reset' | 'tab' | 'modal';
 
+/** Minimal structural type for React Navigation's state object. */
+interface NavigationRoute {
+  name: string;
+  params?: Record<string, unknown>;
+  state?: NavigationState;
+}
+
+interface NavigationState {
+  index?: number;
+  routes?: NavigationRoute[];
+}
+
 export interface NavigationChange {
   type: NavigationType;
   screen: string;
@@ -15,19 +27,16 @@ export interface NavigationChange {
   previousScreen?: string;
 }
 
-export interface NavigationListenerConfig {
+interface NavigationListenerConfig {
   onNavigationChange: (change: NavigationChange) => void;
   navigationRef?: NavigationRef | null;
   maskParams?: boolean;
 }
 
-/**
- * NavigationListener class to track React Navigation events
- */
 export class NavigationListener {
   private config: Required<NavigationListenerConfig>;
   private unsubscribe: (() => void) | null = null;
-  private currentRoute: { name: string; params?: any } | null = null;
+  private currentRoute: { name: string; params?: Record<string, unknown> } | null = null;
   private routeHistory: string[] = [];
 
   constructor(config: NavigationListenerConfig) {
@@ -38,9 +47,6 @@ export class NavigationListener {
     };
   }
 
-  /**
-   * Start listening to navigation events
-   */
   public start(navigationRef?: NavigationRef): void {
     const ref = navigationRef || this.config.navigationRef;
 
@@ -65,9 +71,6 @@ export class NavigationListener {
     this.unsubscribe = ref.addListener('state', this.handleStateChange);
   }
 
-  /**
-   * Stop listening to navigation events
-   */
   public stop(): void {
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -75,16 +78,10 @@ export class NavigationListener {
     }
   }
 
-  /**
-   * Get current route
-   */
-  public getCurrentRoute(): { name: string; params?: any } | null {
+  public getCurrentRoute(): { name: string; params?: Record<string, unknown> } | null {
     return this.currentRoute;
   }
 
-  /**
-   * Get route history
-   */
   public getRouteHistory(): string[] {
     return [...this.routeHistory];
   }
@@ -93,8 +90,8 @@ export class NavigationListener {
   // Private Methods
   // ========================================================================
 
-  private handleStateChange = (e: any): void => {
-    const state = e?.data?.state;
+  private handleStateChange = (e: unknown): void => {
+    const state = (e as { data?: { state?: NavigationState } })?.data?.state;
     if (!state) return;
 
     const route = this.getActiveRoute(state);
@@ -126,14 +123,12 @@ export class NavigationListener {
     });
   };
 
-  /**
-   * Get the active route from navigation state
-   */
-  private getActiveRoute(state: any): { name: string; params?: any } | null {
+  /** Traverses nested navigators to find the leaf route. */
+  private getActiveRoute(state: NavigationState): { name: string; params?: Record<string, unknown> } | null {
     if (!state) return null;
 
     // Traverse nested navigators to find the active route
-    let route = state.routes?.[state.index ?? 0];
+    let route: NavigationRoute | undefined = state.routes?.[state.index ?? 0];
     while (route?.state) {
       route = route.state.routes?.[route.state.index ?? 0];
     }
@@ -146,12 +141,9 @@ export class NavigationListener {
     };
   }
 
-  /**
-   * Determine navigation type based on route changes
-   */
   private determineNavigationType(
-    previous: { name: string; params?: any } | null,
-    current: { name: string; params?: any }
+    previous: { name: string; params?: Record<string, unknown> } | null,
+    current: { name: string; params?: Record<string, unknown> }
   ): NavigationType {
     if (!previous) {
       return 'push';
@@ -177,11 +169,8 @@ export class NavigationListener {
     return 'push';
   }
 
-  /**
-   * Mask sensitive parameter values
-   */
-  private maskSensitiveParams(params?: any): Record<string, unknown> | undefined {
-    if (!params || typeof params !== 'object') {
+  private maskSensitiveParams(params?: Record<string, unknown>): Record<string, unknown> | undefined {
+    if (!params) {
       return params;
     }
 
@@ -196,7 +185,7 @@ export class NavigationListener {
         masked[key] = '***';
       } else if (typeof value === 'object' && value !== null) {
         // Recursively mask nested objects
-        masked[key] = this.maskSensitiveParams(value);
+        masked[key] = this.maskSensitiveParams(value as Record<string, unknown>);
       } else {
         masked[key] = value;
       }
@@ -211,7 +200,7 @@ export class NavigationListener {
  */
 export function createNavigationListener(
   config: Omit<NavigationListenerConfig, 'navigationRef'>
-): { listener: NavigationListener; ref: any } {
+): { listener: NavigationListener; ref: NavigationRef | null } {
   // This would typically be created using React Navigation's createNavigationContainerRef
   // But since we're in a pure TS file, we'll just provide the type
   const listener = new NavigationListener(config);

@@ -10,7 +10,7 @@ export const VERSION = '0.0.1';
 
 // Main exports
 export { GremlinRecorder } from './recorder';
-export { GremlinProvider, useGremlin, withGremlin } from './GremlinProvider';
+export { GremlinProvider, useGremlin } from './GremlinProvider';
 export { LocalTransport } from './transport';
 
 // Types
@@ -23,6 +23,7 @@ export {
   measureElement,
   findInteractiveParent,
   toElementInfo,
+  type RNComponentRef,
 } from './element-capture';
 
 // Gesture interceptor (for custom implementations)
@@ -47,6 +48,14 @@ export {
   createPerformanceMonitor,
 } from './performance-monitor';
 
+// Capabilities (for custom recorder compositions)
+export {
+  RNTransportCapability,
+  RNPerformanceCapability,
+  type RNTransportCapabilityConfig,
+  type RNPerformanceCapabilityConfig,
+} from './capabilities';
+
 // Re-export core types for convenience
 export type {
   GremlinSession,
@@ -64,4 +73,5 @@ export type {
   AppInfo,
   ElementInfo,
   ElementType,
+  UploadResult,
 } from '@gremlin/session';

@@ -2,5 +2,11 @@
  * Session importers for various platforms
  */
 
-export * from './rrweb';
-export * from './posthog';
+export {
+  sortEventsByTimestamp,
+  buildNodeMapFromEvents,
+  convertRrwebEventsToGremlin,
+  type ConvertRrwebOptions,
+} from './rrweb-core.ts';
+export * from './rrweb.ts';
+export * from './posthog.ts';

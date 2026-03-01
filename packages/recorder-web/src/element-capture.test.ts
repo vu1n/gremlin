@@ -1,10 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import type { ElementInfo } from '@gremlin/session';
 
-// ============================================================================
-// DOM Class Mocks
-// ============================================================================
-
 // We need real class hierarchies so `instanceof` checks in element-capture work.
 
 class MockHTMLElement {
@@ -113,10 +109,6 @@ class MockHTMLSelectElement extends MockHTMLElement {
   }
 }
 
-// ============================================================================
-// Setup/Teardown: Install DOM globals
-// ============================================================================
-
 const savedGlobals: Record<string, any> = {};
 
 beforeAll(() => {
@@ -155,10 +147,6 @@ afterAll(() => {
   }
 });
 
-// ============================================================================
-// Lazy import so module sees our globals
-// ============================================================================
-
 // Dynamic import to ensure our globals are set first
 let captureElement: typeof import('./element-capture').captureElement;
 let findInteractiveElement: typeof import('./element-capture').findInteractiveElement;
@@ -169,19 +157,11 @@ beforeAll(async () => {
   findInteractiveElement = mod.findInteractiveElement;
 });
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 /** Shorthand to create a basic MockHTMLElement and captureElement it. */
 function capture(tag: string, opts: ConstructorParameters<typeof MockHTMLElement>[1] = {}): ElementInfo {
   const el = new MockHTMLElement(tag, opts);
   return captureElement(el as any);
 }
-
-// ============================================================================
-// Tests: captureElement
-// ============================================================================
 
 describe('captureElement', () => {
   // --------------------------------------------------------------------------
@@ -574,10 +554,6 @@ describe('captureElement', () => {
     });
   });
 });
-
-// ============================================================================
-// Tests: findInteractiveElement
-// ============================================================================
 
 describe('findInteractiveElement', () => {
   test('returns null for null target', () => {

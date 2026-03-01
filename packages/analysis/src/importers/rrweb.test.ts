@@ -1,12 +1,11 @@
 import { describe, test, expect } from 'bun:test';
 import {
   importRrwebRecording,
-  parseRrwebFile,
   RrwebEventType,
   IncrementalSource,
   MouseInteractions,
   type RrwebEvent,
-} from './rrweb';
+} from './rrweb.ts';
 
 describe('RrwebImporter', () => {
   test('imports basic rrweb recording with meta and click events', () => {
@@ -254,7 +253,8 @@ describe('RrwebImporter', () => {
       },
     ]);
 
-    const session = parseRrwebFile(json);
+    const events = JSON.parse(json) as RrwebEvent[];
+    const session = importRrwebRecording(events);
 
     expect(session.header.startTime).toBe(1000);
     expect(session.header.app.name).toBe('example.com');

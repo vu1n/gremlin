@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 /**
  * Auto-generated Fuzz Tests from GremlinSpec: app
@@ -19,10 +19,9 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: state machine violations, unexpected crashes
    */
   test('random_walk_8kqpsf', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Random action: tap
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 2: Random action: tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -30,11 +29,11 @@ test.describe('app - Fuzz Tests', () => {
     // Step 3: Random action: tap
     await page.getByTestId('continue-shopping-btn').click();
 
-    // Step 4: Random action: NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 4: Random action: navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 5: Random action: tap
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 6: Random action: tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -46,7 +45,7 @@ test.describe('app - Fuzz Tests', () => {
     await page.getByTestId('search-input').fill('test input');
 
     // Step 9: Random action: tap
-    await page.getByTestId('search-result-*').click();
+    await page.getByTestId(/search-result-.*/).first().click();
 
     // Step 10: Random action: tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -54,8 +53,8 @@ test.describe('app - Fuzz Tests', () => {
     // Step 11: Random action: tap
     await page.getByTestId('continue-shopping-btn').click();
 
-    // Step 12: Random action: NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 12: Random action: navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 13: Random action: tap
     await page.getByTestId('cart-icon').click();
@@ -75,7 +74,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: state machine violations, unexpected crashes
    */
   test('random_walk_7z7t54', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Random action: tap
     await page.getByTestId('cart-icon').click();
@@ -95,16 +93,15 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: state machine violations, unexpected crashes
    */
   test('random_walk_hioi7b', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
-    // Step 1: Random action: NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 1: Random action: navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 2: Random action: input
     await page.getByTestId('search-input').fill('test input');
 
     // Step 3: Random action: tap
-    await page.getByTestId('search-result-*').click();
+    await page.getByTestId(/search-result-.*/).first().click();
 
     // Step 4: Random action: tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -124,7 +121,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: input validation, XSS, injection, buffer overflow, unicode handling
    */
   test('boundary_abuse_uj1x9c', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Evil input: XSS attempt
     await page.getByTestId('search-input').fill('<script>alert("xss")</script>');
@@ -133,7 +129,7 @@ test.describe('app - Fuzz Tests', () => {
     await page.getByTestId('search-input').press('Enter');
 
     // Step 3: Evil input: unicode string
-    await page.getByTestId('search-input').fill('￾');
+    await page.getByTestId('search-input').fill('\uFFFE');
 
     // Step 4: Attempt to submit evil input
     await page.getByTestId('search-input').press('Enter');
@@ -165,7 +161,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: input validation, XSS, injection, buffer overflow, unicode handling
    */
   test('boundary_abuse_7koilm', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Evil input: "{{7*7}}"
     await page.getByTestId('search-input').fill('{{7*7}}');
@@ -174,7 +169,7 @@ test.describe('app - Fuzz Tests', () => {
     await page.getByTestId('search-input').press('Enter');
 
     // Step 3: Evil input: unicode string
-    await page.getByTestId('search-input').fill('‮');
+    await page.getByTestId('search-input').fill('\u202E');
 
     // Step 4: Attempt to submit evil input
     await page.getByTestId('search-input').press('Enter');
@@ -206,7 +201,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: input validation, XSS, injection, buffer overflow, unicode handling
    */
   test('boundary_abuse_q0mic2', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Evil input: "${7*7}"
     await page.getByTestId('search-input').fill('${7*7}');
@@ -221,7 +215,7 @@ test.describe('app - Fuzz Tests', () => {
     await page.getByTestId('search-input').press('Enter');
 
     // Step 5: Evil input: unicode string
-    await page.getByTestId('search-input').fill('א ב ג');
+    await page.getByTestId('search-input').fill('\u05D0 \u05D1 \u05D2');
 
     // Step 6: Attempt to submit evil input
     await page.getByTestId('search-input').press('Enter');
@@ -247,22 +241,21 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, state machine violations, missing validation
    */
   test('sequence_mutation_q42qkr', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
-    // Step 1: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 1: Execute navigate
+    await page.waitForLoadState('networkidle');
 
-    // Step 2: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 2: Execute navigate
+    await page.waitForLoadState('networkidle');
 
-    // Step 3: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 3: Execute navigate
+    await page.waitForLoadState('networkidle');
 
-    // Step 4: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 4: Execute navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 5: Execute tap
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 6: Execute tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -282,10 +275,9 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, state machine violations, missing validation
    */
   test('sequence_mutation_jdn7yb', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Execute tap
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 2: Execute tap
     await page.getByTestId('add-to-cart-btn').click();
@@ -293,8 +285,8 @@ test.describe('app - Fuzz Tests', () => {
     // Step 3: Execute tap
     await page.getByTestId('checkout-btn').click();
 
-    // Step 4: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 4: Execute navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 5: Execute tap
     await page.getByTestId('place-order-btn').click();
@@ -308,16 +300,15 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, state machine violations, missing validation
    */
   test('sequence_mutation_8jsa4m', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
-    // Step 1: Execute NAVIGATE
-    // TODO: Handle NAVIGATE event
+    // Step 1: Execute navigate
+    await page.waitForLoadState('networkidle');
 
     // Step 2: Execute tap
     await page.getByTestId('add-to-cart-btn').click();
 
     // Step 3: Execute tap
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 4: Execute tap
     await page.getByTestId('checkout-btn').click();
@@ -334,7 +325,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: navigation bugs, history management, state restoration
    */
   test('back_button_chaos_1h8t6b', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate forward: tap
     await page.getByTestId('cart-icon').click();
@@ -357,7 +347,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: navigation bugs, history management, state restoration
    */
   test('back_button_chaos_qoudgz', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate forward: tap
     await page.getByTestId('cart-icon').click();
@@ -386,7 +375,6 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: navigation bugs, history management, state restoration
    */
   test('back_button_chaos_ykqron', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate forward: tap
     await page.getByTestId('cart-icon').click();
@@ -415,10 +403,9 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, double submission, event handler bugs
    */
   test('rapid_fire_97sxli', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate to Product Detail
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 2: Rapid click 1/15
     await page.getByTestId('add-to-cart-btn').click();
@@ -489,10 +476,9 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, double submission, event handler bugs
    */
   test('rapid_fire_ss0qpy', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate to Product Detail
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 2: Rapid click 1/20
     await page.getByTestId('add-to-cart-btn').click();
@@ -583,10 +569,9 @@ test.describe('app - Fuzz Tests', () => {
    * May catch: race conditions, double submission, event handler bugs
    */
   test('rapid_fire_gecqhf', async ({ page }) => {
-    await page.goto('http://localhost:3000');
 
     // Step 1: Navigate to Product Detail
-    await page.getByTestId('product-card-*').click();
+    await page.getByTestId(/product-card-.*/).first().click();
 
     // Step 2: Rapid click 1/12
     await page.getByTestId('add-to-cart-btn').click();

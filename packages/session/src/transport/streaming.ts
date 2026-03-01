@@ -6,16 +6,12 @@
  *
  * Features:
  * - Batches events by time interval (default: 2 seconds)
- * - Sends to /session/append endpoint
+ * - Sends to /v1/sessions/:id/events endpoint
  * - Uses sendBeacon on page unload for reliability
  * - Falls back to localStorage if server unavailable
  */
 
-import type { GremlinSession, GremlinEvent } from '../types';
-
-// ============================================================================
-// Types
-// ============================================================================
+import type { GremlinSession, GremlinEvent } from '../types.ts';
 
 export interface StreamingTransportConfig {
   /** Server endpoint (default: http://localhost:3334) */
@@ -30,22 +26,31 @@ export interface StreamingTransportConfig {
   /** Fall back to localStorage if server unavailable */
   fallbackToStorage?: boolean;
 
-  /** Debug logging */
   debug?: boolean;
 
-  /** Retry attempts for append uploads (default: 2) */
+  /** Default: 2 */
   retryAttempts?: number;
 
-  /** Base retry delay in ms (default: 500) */
+  /** ms, default: 500 */
   retryDelayMs?: number;
 }
 
-// ============================================================================
-// StreamingTransport
-// ============================================================================
+type LogFn = (msg: string, ...args: unknown[]) => void;
+
+function createLogger(debug: boolean): { log: LogFn; warn: LogFn } {
+  if (!debug) {
+    const noop: LogFn = () => {};
+    return { log: noop, warn: noop };
+  }
+  return {
+    log: (msg, ...args) => console.debug(`[StreamingTransport] ${msg}`, ...args),
+    warn: (msg, ...args) => console.debug(`[StreamingTransport] ${msg}`, ...args),
+  };
+}
 
 export class StreamingTransport {
   private config: Required<StreamingTransportConfig>;
+  private dbg: { log: LogFn; warn: LogFn };
   private sessionId: string | null = null;
   private pendingEvents: GremlinEvent[] = [];
   private pendingRrwebEvents: unknown[] = [];
@@ -62,6 +67,12 @@ export class StreamingTransport {
       retryAttempts: config.retryAttempts ?? 2,
       retryDelayMs: config.retryDelayMs ?? 500,
     };
+    this.dbg = createLogger(this.config.debug);
+  }
+
+  /** Return the configured endpoint URL. */
+  getEndpoint(): string {
+    return this.config.endpoint;
   }
 
   /**
@@ -84,9 +95,7 @@ export class StreamingTransport {
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
 
-    if (this.config.debug) {
-      console.log(`[StreamingTransport] Started for session ${sessionId}`);
-    }
+    this.dbg.log(`Started for session ${sessionId}`);
   }
 
   /**
@@ -111,9 +120,7 @@ export class StreamingTransport {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
 
-    if (this.config.debug) {
-      console.log(`[StreamingTransport] Stopped for session ${sid}`);
-    }
+    this.dbg.log(`Stopped for session ${sid}`);
 
     // Null sessionId AFTER flush() has captured it into the payload.
     // If flush() was skipped (flushing guard), the in-flight flush already
@@ -121,9 +128,6 @@ export class StreamingTransport {
     this.sessionId = null;
   }
 
-  /**
-   * Queue a gremlin event for streaming.
-   */
   pushEvent(event: GremlinEvent): void {
     this.pendingEvents.push(event);
 
@@ -133,9 +137,6 @@ export class StreamingTransport {
     }
   }
 
-  /**
-   * Queue an rrweb event for streaming.
-   */
   pushRrwebEvent(event: unknown): void {
     this.pendingRrwebEvents.push(event);
 
@@ -147,9 +148,6 @@ export class StreamingTransport {
 
   private flushing = false;
 
-  /**
-   * Flush pending events to server.
-   */
   flush(): void {
     if (!this.sessionId) return;
     if (this.pendingEvents.length === 0 && this.pendingRrwebEvents.length === 0) return;
@@ -181,11 +179,9 @@ export class StreamingTransport {
           this.pendingEvents = [...events, ...this.pendingEvents];
           this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
         }
-        if (this.config.debug) {
-          console.log(
-            `[StreamingTransport] Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'queued for retry'}`
-          );
-        }
+        this.dbg.log(
+          `Flushed ${eventCount} events, ${rrwebCount} rrweb - ${success ? 'ok' : 'queued for retry'}`
+        );
       })
       .finally(() => {
         this.flushing = false;
@@ -213,7 +209,7 @@ export class StreamingTransport {
     };
 
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-    const sent = navigator.sendBeacon(`${this.config.endpoint}/session/append`, blob);
+    const sent = navigator.sendBeacon(`${this.config.endpoint}/v1/sessions/${this.sessionId}/events`, blob);
 
     if (!sent) {
       // Beacon failed — restore events so flush() can retry
@@ -221,9 +217,7 @@ export class StreamingTransport {
       this.pendingRrwebEvents = [...rrwebEvents, ...this.pendingRrwebEvents];
     }
 
-    if (this.config.debug) {
-      console.log(`[StreamingTransport] Beacon flush: ${sent ? 'sent' : 'failed'}`);
-    }
+    this.dbg.log(`Beacon flush: ${sent ? 'sent' : 'failed'}`);
   }
 
   /**
@@ -231,7 +225,7 @@ export class StreamingTransport {
    */
   async uploadSession(session: GremlinSession): Promise<boolean> {
     try {
-      const response = await fetch(`${this.config.endpoint}/session`, {
+      const response = await fetch(`${this.config.endpoint}/v1/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(session),
@@ -258,7 +252,7 @@ export class StreamingTransport {
   }): Promise<boolean> {
     try {
       const ok = await this.withRetry(async () => {
-        const response = await fetch(`${this.config.endpoint}/session/append`, {
+        const response = await fetch(`${this.config.endpoint}/v1/sessions/${payload.sessionId}/events`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -348,9 +342,7 @@ export class StreamingTransport {
 
       localStorage.setItem(key, JSON.stringify(data));
     } catch (e) {
-      if (this.config.debug) {
-        console.warn('[StreamingTransport] localStorage write failed', e);
-      }
+      this.dbg.warn('localStorage write failed', e);
     }
   }
 

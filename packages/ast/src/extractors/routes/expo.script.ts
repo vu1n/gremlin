@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
  * Test script for Expo Router route extraction
- * Run with: bun run src/extractors/routes/expo.test.ts
+ * Run with: bun run src/extractors/routes/expo.script.ts
  */
 
 import { join, resolve, dirname } from 'path';
-import { extractExpoRoutes, printRoutes } from './expo.js';
+import { extractExpoRoutes, printRoutes } from './expo.ts';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -15,7 +15,7 @@ console.log('Testing Expo Router route extraction...');
 console.log(`App path: ${expoAppPath}\n`);
 
 // Extract routes
-const result = extractExpoRoutes({
+const result = await extractExpoRoutes({
   rootDir: expoAppPath,
   includeLayouts: true
 });

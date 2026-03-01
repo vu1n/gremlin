@@ -21,7 +21,7 @@ interface GremlinContextValue {
 
 const GremlinContext = createContext<GremlinContextValue | null>(null);
 
-export interface GremlinProviderProps {
+interface GremlinProviderProps {
   /** App children */
   children: ReactNode;
 
@@ -74,26 +74,38 @@ export function GremlinProvider({
   autoStart = false,
 }: GremlinProviderProps): JSX.Element {
   const recorderRef = useRef<GremlinRecorder | null>(null);
+  const configRef = useRef(config);
   const [isRecording, setIsRecording] = React.useState(false);
 
-  // Initialize recorder once
-  useEffect(() => {
-    if (!recorderRef.current) {
-      recorderRef.current = new GremlinRecorder(config);
+  configRef.current = config;
 
-      if (autoStart) {
-        recorderRef.current.start(navigationRef);
-        setIsRecording(true);
-      }
+  // Serialize config for stable dependency comparison — avoids teardown/restart
+  // when callers pass structurally-equal object literals on each render.
+  const configKey = JSON.stringify(config);
+
+  // Effect 1: Construct/destroy recorder when config values change
+  useEffect(() => {
+    if (recorderRef.current?.isActive()) {
+      recorderRef.current.stop();
+      setIsRecording(false);
     }
 
-    // Cleanup on unmount
+    recorderRef.current = new GremlinRecorder(configRef.current);
+
     return () => {
       if (recorderRef.current?.isActive()) {
         recorderRef.current.stop();
       }
     };
-  }, []);
+  }, [configKey]);
+
+  // Effect 2: Handle autoStart and navigationRef transitions
+  useEffect(() => {
+    if (autoStart && recorderRef.current && !recorderRef.current.isActive()) {
+      recorderRef.current.start(navigationRef);
+      setIsRecording(true);
+    }
+  }, [configKey, autoStart, navigationRef]);
 
   const startRecording = (navRef?: NavigationRef) => {
     if (recorderRef.current && !recorderRef.current.isActive()) {
@@ -180,16 +192,3 @@ export function useGremlin(): GremlinContextValue {
   return context;
 }
 
-/**
- * Higher-order component to wrap a component with Gremlin recording
- */
-export function withGremlin<P extends object>(
-  Component: React.ComponentType<P>,
-  config: GremlinRecorderConfig
-): React.ComponentType<P> {
-  return (props: P) => (
-    <GremlinProvider config={config}>
-      <Component {...props} />
-    </GremlinProvider>
-  );
-}

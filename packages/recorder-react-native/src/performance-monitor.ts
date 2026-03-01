@@ -6,31 +6,17 @@
 
 import { InteractionManager } from 'react-native';
 
-// Re-export the canonical PerformanceSample from @gremlin/session
-// so consumers get the correct type for server-side aggregation
 import type { PerformanceSample } from '@gremlin/session';
-export type { PerformanceSample };
 
-export interface PerformanceMonitorConfig {
-  /** Sample interval (ms) */
+interface PerformanceMonitorConfig {
+  /** ms */
   sampleInterval?: number;
-
-  /** Callback for performance samples */
   onSample?: (sample: PerformanceSample) => void;
-
-  /** Enable FPS tracking */
   trackFPS?: boolean;
-
-  /** Enable memory tracking */
   trackMemory?: boolean;
-
-  /** Enable JS thread lag tracking */
   trackJSLag?: boolean;
 }
 
-/**
- * PerformanceMonitor class to track app performance metrics
- */
 export class PerformanceMonitor {
   private config: Required<PerformanceMonitorConfig>;
   private isRunning = false;
@@ -62,9 +48,6 @@ export class PerformanceMonitor {
     };
   }
 
-  /**
-   * Start monitoring performance
-   */
   public start(): void {
     if (this.isRunning) {
       console.warn('PerformanceMonitor: Already running');
@@ -91,9 +74,6 @@ export class PerformanceMonitor {
     }, this.config.sampleInterval);
   }
 
-  /**
-   * Stop monitoring performance
-   */
   public stop(): void {
     if (!this.isRunning) return;
 
@@ -118,9 +98,6 @@ export class PerformanceMonitor {
     }
   }
 
-  /**
-   * Get current performance sample
-   */
   public getCurrentSample(): PerformanceSample {
     const sample: PerformanceSample = {};
 
@@ -144,17 +121,12 @@ export class PerformanceMonitor {
     return sample;
   }
 
-  /**
-   * Mark navigation event (for timeSinceNavigation tracking)
-   */
+  /** Resets timeSinceNavigation and JS lag counters. */
   public markNavigation(): void {
     this.lastNavigationTime = Date.now();
     this.maxLagSinceLastSample = 0;
   }
 
-  /**
-   * Reset navigation timer
-   */
   public resetNavigationTimer(): void {
     this.lastNavigationTime = 0;
   }
@@ -258,9 +230,6 @@ export class PerformanceMonitor {
   }
 }
 
-/**
- * Create a performance monitor with default config
- */
 export function createPerformanceMonitor(
   config?: PerformanceMonitorConfig
 ): PerformanceMonitor {

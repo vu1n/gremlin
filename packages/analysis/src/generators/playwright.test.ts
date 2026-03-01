@@ -1,11 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { generatePlaywrightTests } from './playwright';
-import type { GremlinSpec } from '../spec/types';
-import { stateId, transitionId, createSpec, createState, createTransition } from '../spec/types';
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
+import { generatePlaywrightTests } from './playwright.ts';
+import type { GremlinSpec } from '../spec/types.ts';
+import { stateId, createSpec, createState, createTransition } from '../spec/types.ts';
 
 function makeSpec(overrides?: Partial<GremlinSpec>): GremlinSpec {
   const spec = createSpec('TestApp', 'web');
@@ -49,10 +45,6 @@ function makeSpec(overrides?: Partial<GremlinSpec>): GremlinSpec {
 
   return { ...spec, ...overrides };
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 describe('Playwright Generator', () => {
   test('generates valid test file with imports', () => {
@@ -389,7 +381,7 @@ describe('Playwright Generator', () => {
       groupBy: 'transition',
     });
 
-    expect(code).toContain('data-testid');
+    expect(code).toContain('getByTestId(/product-card-.*/)');
     expect(code).toContain('.first()');
   });
 });

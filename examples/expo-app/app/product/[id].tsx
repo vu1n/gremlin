@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '../../components/Button';

@@ -8,15 +8,11 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSession } from '@gremlin/session';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { output, type OutputOptions } from '../output.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
+interface StatusOptions extends OutputOptions {}
 
-export interface StatusOptions extends OutputOptions {}
-
-export interface StatusResult {
+interface StatusResult {
   initialized: boolean;
   config: {
     framework?: string;
@@ -61,10 +57,6 @@ export interface StatusResult {
   };
 }
 
-// ============================================================================
-// Main Command
-// ============================================================================
-
 export async function status(options: StatusOptions): Promise<StatusResult> {
   const configResult = checkConfig();
   const sdkResult = checkSdk(configResult?.sdkPackage);
@@ -96,10 +88,6 @@ export async function status(options: StatusOptions): Promise<StatusResult> {
   return result;
 }
 
-// ============================================================================
-// Checks
-// ============================================================================
-
 function checkConfig(): StatusResult['config'] {
   const configPath = join(process.cwd(), '.gremlin', 'config.json');
   if (!existsSync(configPath)) return null;
@@ -114,8 +102,9 @@ function checkConfig(): StatusResult['config'] {
       devServerPort: config.devServer?.port ?? undefined,
       remoteServerUrl: config.remoteServer?.url ?? null,
     };
-  } catch {
-    return {};
+  } catch (err) {
+    console.warn(`Warning: Failed to parse config ${configPath}:`, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -144,32 +133,34 @@ async function checkDevServer(portHint?: number): Promise<StatusResult['devServe
   const port = portHint ?? 3334;
   const url = `http://localhost:${port}`;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1000);
     const res = await fetch(`${url}/health`, { signal: controller.signal });
-    clearTimeout(timeout);
     if (res.ok) {
       return { running: true, url };
     }
     return { running: false };
   } catch {
     return { running: false };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function checkRemoteServer(remoteUrl?: string | null): Promise<StatusResult['remoteServer']> {
   if (!remoteUrl) return { configured: false };
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
     const healthUrl = remoteUrl.replace(/\/$/, '') + '/health';
     const res = await fetch(healthUrl, { signal: controller.signal });
-    clearTimeout(timeout);
     return { configured: true, url: remoteUrl, reachable: res.ok };
   } catch {
     return { configured: true, url: remoteUrl, reachable: false };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -264,10 +255,6 @@ function checkAi(): StatusResult['ai'] {
   return { hasKey: false };
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function countFiles(dir: string, extensions: string[]): number {
   if (!existsSync(dir)) return 0;
   try {
@@ -278,10 +265,6 @@ function countFiles(dir: string, extensions: string[]): number {
     return 0;
   }
 }
-
-// ============================================================================
-// Human Output
-// ============================================================================
 
 function printHumanOutput(result: StatusResult): void {
   console.log('');

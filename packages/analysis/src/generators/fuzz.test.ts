@@ -7,9 +7,9 @@ import {
   EVIL_STRINGS,
   type FuzzTest,
   type FuzzStrategy,
-} from './fuzz';
-import type { GremlinSpec } from '../spec/types';
-import { stateId, transitionId, createSpec, createState, createTransition } from '../spec/types';
+} from './fuzz.ts';
+import type { GremlinSpec } from '../spec/types.ts';
+import { stateId, createSpec, createState, createTransition } from '../spec/types.ts';
 
 // ============================================================================
 // Test Helpers

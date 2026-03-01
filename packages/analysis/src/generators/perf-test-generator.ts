@@ -8,6 +8,7 @@
 import { mkdirSync, writeFileSync as fsWriteFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { GremlinSession } from '@gremlin/session';
+import { escapeString } from './utils.ts';
 
 // ============================================================================
 // Types
@@ -372,14 +373,6 @@ function writeFile(path: string, content: string): void {
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function escapeString(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r');
-}
 
 function slugify(str: string): string {
   return str

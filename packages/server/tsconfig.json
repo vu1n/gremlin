@@ -12,7 +12,6 @@
     "jsx": "react-jsx",
     "paths": {
       "@gremlin/session/*": ["../session/src/*"],
-      "@gremlin/proto/*": ["../proto/src/*"]
     }
   },
   "include": ["src/**/*"],

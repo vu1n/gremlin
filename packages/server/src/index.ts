@@ -6,9 +6,10 @@
  */
 
 import { Hono } from 'hono';
+import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
-import type { Env, ErrorResponse } from './types';
+import type { Env, ErrorResponse } from './types.ts';
 import { registerApiRoutes, type StorageAdapter } from '@gremlin/server-shared';
 import {
   storeSession,
@@ -16,10 +17,11 @@ import {
   listSessions,
   deleteSession,
   getSessionMetadata,
+  appendSessionEvents,
   listSessionsWithPerf,
   getPerformanceAggregation,
   getSessionPerformance,
-} from './storage';
+} from './storage.ts';
 
 /** Constant-time string comparison to prevent timing attacks (length-safe) */
 function timingSafeEqual(a: string, b: string): boolean {
@@ -32,10 +34,6 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 const app = new Hono<{ Bindings: Env }>();
-
-// ============================================================================
-// Middleware
-// ============================================================================
 
 // CORS for browser uploads — reads ALLOWED_ORIGINS env var
 app.use('*', async (c, next) => {
@@ -55,14 +53,26 @@ app.use('*', async (c, next) => {
 app.use('*', compress());
 
 // API Key authentication middleware
-const authMiddleware = async (c: any, next: any) => {
+const authMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => {
+  if (!c.env.API_KEY) {
+    return c.json(
+      {
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'API key not configured',
+        },
+      } as ErrorResponse,
+      401
+    );
+  }
+
   const apiKey = c.req.header('X-API-Key');
 
   if (!apiKey) {
     return c.json(
       {
         error: {
-          code: 'UNAUTHORIZED',
+          code: 'AUTH_REQUIRED',
           message: 'Missing X-API-Key header',
         },
       } as ErrorResponse,
@@ -70,43 +80,22 @@ const authMiddleware = async (c: any, next: any) => {
     );
   }
 
-  // Guard against unconfigured API_KEY
-  if (!c.env.API_KEY) {
+  if (!timingSafeEqual(apiKey, c.env.API_KEY)) {
     return c.json(
       {
         error: {
-          code: 'SERVER_ERROR',
-          message: 'API key not configured on server',
-        },
-      } as ErrorResponse,
-      500
-    );
-  }
-
-  // Constant-time comparison to prevent timing attacks
-  const keysMatch = timingSafeEqual(apiKey, c.env.API_KEY);
-
-  if (!keysMatch) {
-    return c.json(
-      {
-        error: {
-          code: 'FORBIDDEN',
+          code: 'AUTH_INVALID',
           message: 'Invalid API key',
         },
       } as ErrorResponse,
-      403
+      401
     );
   }
 
   await next();
 };
 
-// Apply auth to all API routes except root
-app.use('/v1/*', authMiddleware);
-
-// ============================================================================
-// Health check
-// ============================================================================
+// Auth is applied to /v1/* routes via registerApiRoutes below
 
 app.get('/', (c) => {
   return c.json({
@@ -123,10 +112,6 @@ app.get('/', (c) => {
   });
 });
 
-// ============================================================================
-// API routes (shared with self-hosted server)
-// ============================================================================
-
 // CF Workers env is per-request, so the adapter factory creates one from context
 function createStorageAdapter(env: Env): StorageAdapter {
   return {
@@ -135,12 +120,15 @@ function createStorageAdapter(env: Env): StorageAdapter {
     getSessionMetadata: (id) => getSessionMetadata(env, id),
     listSessions: (limit, cursor) => listSessions(env, limit, cursor),
     deleteSession: (id) => deleteSession(env, id),
+    appendSessionEvents: (id, events) => appendSessionEvents(env, id, events),
     listSessionsWithPerf: (opts) => listSessionsWithPerf(env, opts),
     getPerformanceAggregation: () => getPerformanceAggregation(env),
     getSessionPerformance: (id) => getSessionPerformance(env, id),
   };
 }
 
-registerApiRoutes(app, (c) => createStorageAdapter(c.env));
+registerApiRoutes(app, (c) => createStorageAdapter(c.env), {
+  authMiddleware,
+});
 
 export default app;

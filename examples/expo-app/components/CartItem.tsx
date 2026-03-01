@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import type { CartItem as CartItemType } from '../types';
 

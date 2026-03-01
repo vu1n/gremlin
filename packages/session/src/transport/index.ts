@@ -2,11 +2,11 @@
  * Transport adapters for session upload
  */
 
-export type { LocalTransportConfig, TransportResult } from './local';
-export { LocalTransport } from './local';
+export type { LocalTransportConfig, TransportResult } from './local.ts';
+export { LocalTransport } from './local.ts';
 
-export type { StreamingTransportConfig } from './streaming';
-export { StreamingTransport } from './streaming';
+export type { StreamingTransportConfig } from './streaming.ts';
+export { StreamingTransport } from './streaming.ts';
 
-export type { ServerTransportConfig, ServerTransportResult } from './server';
-export { ServerTransport } from './server';
+export type { ServerTransportConfig, ServerTransportResult } from './server.ts';
+export { ServerTransport } from './server.ts';

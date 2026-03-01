@@ -5,12 +5,8 @@
  * Platform recorders wire up lifecycle events (visibility, app state) to trigger flush.
  */
 
-import type { GremlinEvent, ScrollEvent } from './types';
-import { EventTypeEnum } from './types';
-
-// ============================================================================
-// Types
-// ============================================================================
+import type { GremlinEvent, ScrollEvent } from './types.ts';
+import { EventTypeEnum } from './types.ts';
 
 export interface ScrollBatch {
   totalDeltaX: number;
@@ -21,11 +17,10 @@ export interface ScrollBatch {
 }
 
 export interface BatcherConfig {
-  /** Scroll batching window in ms (default: 150) */
+  /** ms, default: 150 */
   scrollBatchWindow: number;
-  /** Enable batching (default: true) */
+  /** Default: true */
   enabled: boolean;
-  /** Debug logging */
   debug?: boolean;
 }
 
@@ -33,10 +28,6 @@ export interface BatcherCallbacks {
   /** Called when a batched event should be emitted */
   onEmit: (event: Omit<GremlinEvent, 'dt'>) => void;
 }
-
-// ============================================================================
-// EventBatcher
-// ============================================================================
 
 /**
  * Handles event batching logic.
@@ -122,16 +113,9 @@ export class EventBatcher {
     this.scrollBatch = null;
   }
 
-  /**
-   * Check if there's a pending batch
-   */
   hasPendingBatch(): boolean {
     return this.scrollBatch !== null;
   }
-
-  // ========================================================================
-  // Private
-  // ========================================================================
 
   private flushScroll(): void {
     if (!this.scrollBatch) {
@@ -147,7 +131,8 @@ export class EventBatcher {
     }
 
     if (this.config.debug) {
-      console.log('[Batcher] Flushing scroll batch', {
+      // eslint-disable-next-line no-console -- debug-only output guarded by config flag
+      console.log('Batcher: flushing scroll batch', {
         events: batch.eventCount,
         deltaX: batch.totalDeltaX,
         deltaY: batch.totalDeltaY,

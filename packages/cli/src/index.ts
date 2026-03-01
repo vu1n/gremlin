@@ -1,20 +1,5 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
-import { dev } from './commands/dev.ts';
-import { generate } from './commands/generate.ts';
-import { fuzz } from './commands/fuzz.ts';
-import { instrument } from './commands/instrument.ts';
-import { replay } from './commands/replay.ts';
-import { importFromPostHog, importFromFile } from './commands/import.ts';
-import { run } from './commands/run.ts';
-import { listSessions } from './commands/sessions.ts';
-import { init } from './commands/init.ts';
-import { status } from './commands/status.ts';
-import { analyticsSummary, analyticsErrors, analyticsPerformance } from './commands/analytics.ts';
-import { analyze } from './commands/analyze.ts';
-import { deployLocal, deployDocker, deployStatus, deployStop } from './commands/deploy.ts';
-import { perfBaseline } from './commands/perf-baseline.ts';
-import { errors } from './commands/errors.ts';
 
 const program = new Command();
 
@@ -43,10 +28,6 @@ Agent workflow:
 `
 );
 
-// ============================================================================
-// Init
-// ============================================================================
-
 program
   .command('init')
   .description('Initialize Gremlin in current project')
@@ -58,6 +39,7 @@ program
   .option('--force', 'Reinitialize even if .gremlin/ exists')
   .action(async (options) => {
     const json = program.opts().json;
+    const { init } = await import('./commands/init.ts');
     await init({
       appName: options.appName,
       framework: options.framework,
@@ -69,21 +51,14 @@ program
     });
   });
 
-// ============================================================================
-// Status
-// ============================================================================
-
 program
   .command('status')
   .description('Show project status and configuration')
   .action(async () => {
     const json = program.opts().json;
+    const { status } = await import('./commands/status.ts');
     await status({ json });
   });
-
-// ============================================================================
-// Dev
-// ============================================================================
 
 program
   .command('dev')
@@ -93,6 +68,7 @@ program
   .option('-v, --verbose', 'Verbose logging')
   .action(async (options) => {
     const json = program.opts().json;
+    const { dev } = await import('./commands/dev.ts');
     await dev({
       port: parseInt(options.port, 10),
       output: options.output,
@@ -100,10 +76,6 @@ program
       json,
     });
   });
-
-// ============================================================================
-// Replay
-// ============================================================================
 
 program
   .command('replay')
@@ -113,6 +85,7 @@ program
   .option('--speed <number>', 'Playback speed', '1')
   .option('--no-autoplay', 'Disable auto-play')
   .action(async (session, options) => {
+    const { replay } = await import('./commands/replay.ts');
     await replay({
       session,
       port: parseInt(options.port, 10),
@@ -120,10 +93,6 @@ program
       autoPlay: options.autoplay !== false,
     });
   });
-
-// ============================================================================
-// Import
-// ============================================================================
 
 program
   .command('import')
@@ -149,6 +118,7 @@ program
   .action(async (options) => {
     const json = program.opts().json;
     if (options.posthog) {
+      const { importFromPostHog } = await import('./commands/import.ts');
       await importFromPostHog({
         apiKey: options.apiKey || process.env.POSTHOG_API_KEY || '',
         projectId: options.projectId || process.env.POSTHOG_PROJECT_ID || '',
@@ -162,6 +132,7 @@ program
         json,
       });
     } else if (options.file) {
+      const { importFromFile } = await import('./commands/import.ts');
       await importFromFile({
         file: options.file,
         format: options.format,
@@ -182,10 +153,6 @@ program
     }
   });
 
-// ============================================================================
-// Sessions
-// ============================================================================
-
 program
   .command('sessions')
   .description('List recorded sessions')
@@ -198,6 +165,7 @@ program
   .option('--slow', 'Sessions failing Core Web Vitals (LCP>2500 OR CLS>0.25 OR INP>200)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { listSessions } = await import('./commands/sessions.ts');
     await listSessions({
       input: options.input,
       limit: parseInt(options.limit, 10),
@@ -209,10 +177,6 @@ program
       json,
     });
   });
-
-// ============================================================================
-// Generate
-// ============================================================================
 
 program
   .command('generate')
@@ -230,6 +194,7 @@ program
   .option('--min-occurrences <n>', 'Minimum error occurrences to generate tests (default: 1)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { generate } = await import('./commands/generate/index.ts');
     await generate({
       input: options.input,
       output: options.output,
@@ -246,10 +211,6 @@ program
     });
   });
 
-// ============================================================================
-// Fuzz
-// ============================================================================
-
 program
   .command('fuzz')
   .description('Generate fuzz tests from state model')
@@ -260,6 +221,7 @@ program
   .option('--seed <number>', 'Random seed for reproducible tests')
   .action(async (options) => {
     const json = program.opts().json;
+    const { fuzz } = await import('./commands/fuzz.ts');
     await fuzz({
       spec: options.spec,
       output: options.output,
@@ -270,10 +232,6 @@ program
     });
   });
 
-// ============================================================================
-// Instrument
-// ============================================================================
-
 program
   .command('instrument')
   .description('Generate AI-friendly prompt for instrumenting your app')
@@ -281,16 +239,13 @@ program
   .option('--llms', 'Output llms.txt format instead of prompt')
   .action(async (options) => {
     const json = program.opts().json;
+    const { instrument } = await import('./commands/instrument.ts');
     await instrument({
       framework: options.framework,
       format: options.llms ? 'llms' : 'prompt',
       json,
     });
   });
-
-// ============================================================================
-// Run
-// ============================================================================
 
 program
   .command('run')
@@ -310,6 +265,7 @@ program
       const { runPerf } = await import('./commands/run.ts');
       await runPerf({ json, verbose: options.verbose, headed: options.headed });
     } else {
+      const { run } = await import('./commands/run.ts');
       await run({
         test,
         all: options.all,
@@ -324,10 +280,6 @@ program
     }
   });
 
-// ============================================================================
-// Analytics
-// ============================================================================
-
 const analyticsCmd = program
   .command('analytics')
   .description('Query session analytics');
@@ -335,12 +287,11 @@ const analyticsCmd = program
 analyticsCmd
   .command('summary')
   .description('Aggregate analytics summary')
-  .option('--app <name>', 'Filter by app name')
   .option('--since <date>', 'Filter by date (ISO)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { analyticsSummary } = await import('./commands/analytics.ts');
     await analyticsSummary({
-      app: options.app,
       since: options.since,
       json,
     });
@@ -349,12 +300,11 @@ analyticsCmd
 analyticsCmd
   .command('errors')
   .description('Error breakdown across sessions')
-  .option('--app <name>', 'Filter by app name')
   .option('--since <date>', 'Filter by date (ISO)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { analyticsErrors } = await import('./commands/analytics.ts');
     await analyticsErrors({
-      app: options.app,
       since: options.since,
       json,
     });
@@ -367,16 +317,13 @@ analyticsCmd
   .option('--since <date>', 'Filter by date (ISO)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { analyticsPerformance } = await import('./commands/analytics.ts');
     await analyticsPerformance({
       app: options.app,
       since: options.since,
       json,
     });
   });
-
-// ============================================================================
-// Analyze
-// ============================================================================
 
 program
   .command('analyze')
@@ -386,6 +333,7 @@ program
   .option('--focus <type>', 'Focus area: ux, errors, performance, all', 'all')
   .action(async (options) => {
     const json = program.opts().json;
+    const { analyze } = await import('./commands/analyze.ts');
     await analyze({
       input: options.input,
       provider: options.provider,
@@ -393,10 +341,6 @@ program
       json,
     });
   });
-
-// ============================================================================
-// Deploy
-// ============================================================================
 
 const deployCmd = program
   .command('deploy')
@@ -409,6 +353,7 @@ deployCmd
   .option('--background', 'Run as background daemon')
   .action(async (options) => {
     const json = program.opts().json;
+    const { deployLocal } = await import('./commands/deploy.ts');
     await deployLocal({
       port: parseInt(options.port, 10),
       background: options.background,
@@ -425,6 +370,7 @@ deployCmd
   .option('--no-detach', 'Run in foreground')
   .action(async (options) => {
     const json = program.opts().json;
+    const { deployDocker } = await import('./commands/deploy.ts');
     await deployDocker({
       port: parseInt(options.port, 10),
       apiKey: options.apiKey,
@@ -439,6 +385,7 @@ deployCmd
   .description('Check deployment status')
   .action(async () => {
     const json = program.opts().json;
+    const { deployStatus } = await import('./commands/deploy.ts');
     await deployStatus({ json });
   });
 
@@ -448,15 +395,12 @@ deployCmd
   .option('--target <type>', 'Target: local, docker, all', 'all')
   .action(async (options) => {
     const json = program.opts().json;
+    const { deployStop } = await import('./commands/deploy.ts');
     await deployStop({
       target: options.target,
       json,
     });
   });
-
-// ============================================================================
-// Perf Baseline
-// ============================================================================
 
 program
   .command('perf-baseline')
@@ -466,6 +410,7 @@ program
   .option('--update', 'Update existing baseline (keep tighter budgets)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { perfBaseline } = await import('./commands/perf-baseline.ts');
     await perfBaseline({
       input: options.input,
       margin: parseFloat(options.margin),
@@ -473,10 +418,6 @@ program
       json,
     });
   });
-
-// ============================================================================
-// Errors
-// ============================================================================
 
 program
   .command('errors')
@@ -487,6 +428,7 @@ program
   .option('--generate', 'Generate error regression tests (shorthand for generate --errors)')
   .action(async (options) => {
     const json = program.opts().json;
+    const { errors } = await import('./commands/errors.ts');
     await errors({
       input: options.input,
       minOccurrences: options.minOccurrences ? parseInt(options.minOccurrences, 10) : undefined,
@@ -496,4 +438,13 @@ program
     });
   });
 
-program.parse();
+program.parseAsync().catch((err: unknown) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const json = program.opts().json;
+  if (json) {
+    console.log(JSON.stringify({ ok: false, command: 'unknown', errors: [message] }));
+  } else {
+    console.error(message);
+  }
+  process.exit(1);
+});

@@ -22,35 +22,63 @@ import type {
   ErrorEvent,
   DeviceInfo,
   AppInfo,
-} from './types';
-import { EventTypeEnum } from './types';
-import { EventBatcher, type BatcherConfig } from './batcher';
+  PerformanceSample,
+} from './types.ts';
+import { EventTypeEnum } from './types.ts';
+import { generateSessionId } from './builders.ts';
+import { SCHEMA_VERSION } from './constants.ts';
+import { EventBatcher } from './batcher.ts';
+import { NetworkInterceptor, type NetworkInterceptorConfig } from './network-interceptor.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
+/**
+ * A self-contained lifecycle unit that can be registered with BaseRecorder.
+ * Each capability encapsulates a single concern (transport, performance, etc.)
+ * and receives start/stop/destroy calls from the recorder lifecycle.
+ */
+export interface RecorderCapability {
+  /** Human-readable name for debug logging (e.g. 'transport', 'performance'). */
+  readonly name: string;
+  /** Called when the recorder starts a new session. */
+  start(): void;
+  /** Called when the recorder stops (in reverse registration order). */
+  stop(): void;
+  /** Called when the recorder is destroyed (in reverse registration order). */
+  destroy(): void;
+}
+
+// Debug logger — no-op unless config.debug is true
+type LogFn = (msg: string, ...args: unknown[]) => void;
+
+function createLogger(debug: boolean): LogFn {
+  if (!debug) return () => {};
+  return (msg, ...args) => console.log(`[Gremlin] ${msg}`, ...args);
+}
+
+/**
+ * Platform-agnostic interface for performance monitors.
+ * Both web and RN performance monitors implement these methods,
+ * allowing BaseRecorder to handle perf enrichment and lifecycle.
+ */
+export interface PerformanceProvider {
+  getCurrentSample(): PerformanceSample;
+  markNavigation(): void;
+  start(): void;
+  stop(): void;
+}
 
 export interface BaseRecorderConfig {
-  /** Enable event batching (default: true) */
+  /** Default: true */
   enableBatching?: boolean;
-  /** Scroll batch window in ms (default: 150) */
+  /** ms, default: 150 */
   scrollBatchWindow?: number;
-  /** Debug logging */
   debug?: boolean;
 }
 
 export interface SessionMetadata {
-  /** Device information - set once per session */
   device: DeviceInfo;
-  /** App information - set once per session */
   app: AppInfo;
-  /** Custom session-level metadata */
   custom?: Record<string, unknown>;
 }
-
-// ============================================================================
-// BaseRecorder
-// ============================================================================
 
 export abstract class BaseRecorder {
   protected session: GremlinSession | null = null;
@@ -58,9 +86,29 @@ export abstract class BaseRecorder {
   protected currentScreen: string = 'unknown';
   protected lastEventTimestamp: number = 0;
   protected elementMap: Map<string, number> = new Map();
-  private unknownElementCounter = 0;
+  protected unknownElementCounter = 0;
   protected config: Required<BaseRecorderConfig>;
+  protected log: LogFn;
   protected batcher: EventBatcher;
+
+  /**
+   * Optional performance provider. When set, every event is automatically
+   * enriched with a perf sample, and the provider is stopped/cleaned up
+   * in stop() and destroy().
+   */
+  protected performanceProvider: PerformanceProvider | null = null;
+
+  /**
+   * Optional network interceptor. When set, it is uninstalled and cleaned
+   * up in stop() and destroy().
+   */
+  protected networkInterceptor: NetworkInterceptor | null = null;
+
+  /**
+   * Registered capabilities. Capabilities are started in registration order
+   * and stopped/destroyed in reverse order.
+   */
+  private capabilities: RecorderCapability[] = [];
 
   constructor(config: BaseRecorderConfig = {}) {
     this.config = {
@@ -68,6 +116,7 @@ export abstract class BaseRecorder {
       scrollBatchWindow: config.scrollBatchWindow ?? 150,
       debug: config.debug ?? false,
     };
+    this.log = createLogger(this.config.debug);
 
     // Initialize batcher with callback to add events
     this.batcher = new EventBatcher(
@@ -82,31 +131,23 @@ export abstract class BaseRecorder {
     );
   }
 
-  // ========================================================================
-  // Abstract methods - Platform recorders must implement
-  // ========================================================================
-
-  /** Get device info for session header */
-  protected abstract getDeviceInfo(): DeviceInfo;
-
-  /** Get app info for session header */
-  protected abstract getAppInfo(): AppInfo;
-
-  /** Generate unique session ID */
-  protected generateSessionId(): string {
-    const timestamp = Date.now().toString(36);
-    const random = crypto.randomUUID().split('-')[0];
-    return `${timestamp}-${random}`;
+  /**
+   * Register a capability to participate in the recorder lifecycle.
+   * Capabilities are started in registration order and stopped/destroyed
+   * in reverse order (LIFO).
+   */
+  protected registerCapability(capability: RecorderCapability): void {
+    this.capabilities.push(capability);
+    this.log(`Capability registered: ${capability.name}`);
   }
 
-  // ========================================================================
-  // Session Lifecycle
-  // ========================================================================
+  protected abstract getDeviceInfo(): DeviceInfo;
+  protected abstract getAppInfo(): AppInfo;
 
-  /**
-   * Start a new recording session.
-   * Session metadata is captured once here.
-   */
+  protected generateSessionId(): string {
+    return generateSessionId();
+  }
+
   start(): void {
     const now = Date.now();
 
@@ -116,7 +157,7 @@ export abstract class BaseRecorder {
         startTime: now,
         device: this.getDeviceInfo(),
         app: this.getAppInfo(),
-        schemaVersion: 1,
+        schemaVersion: SCHEMA_VERSION,
       },
       elements: [],
       events: [],
@@ -128,19 +169,36 @@ export abstract class BaseRecorder {
     this.elementMap.clear();
     this.unknownElementCounter = 0;
 
-    if (this.config.debug) {
-      console.log('[Gremlin] Recording started', {
-        sessionId: this.session.header.sessionId,
-      });
+    // Start all registered capabilities (in registration order)
+    for (const cap of this.capabilities) {
+      cap.start();
     }
+
+    this.log('Recording started', {
+      sessionId: this.session.header.sessionId,
+    });
   }
 
-  /**
-   * Stop recording and return the session.
-   * Flushes any pending batched events.
-   */
+  /** Flushes any pending batched events before stopping. */
   stop(): GremlinSession | null {
     if (!this.session) return null;
+
+    // Stop registered capabilities in reverse order (LIFO)
+    for (let i = this.capabilities.length - 1; i >= 0; i--) {
+      this.capabilities[i].stop();
+    }
+
+    // Stop performance provider before flushing (subclasses may read session-level data first)
+    if (this.performanceProvider) {
+      this.performanceProvider.stop();
+      this.performanceProvider = null;
+    }
+
+    // Uninstall network interceptor
+    if (this.networkInterceptor) {
+      this.networkInterceptor.uninstall();
+      this.networkInterceptor = null;
+    }
 
     // Flush pending scroll batch before stopping
     this.batcher.flush();
@@ -148,31 +206,55 @@ export abstract class BaseRecorder {
     this.recording = false;
     this.session.header.endTime = Date.now();
 
-    if (this.config.debug) {
-      console.log('[Gremlin] Recording stopped', {
-        events: this.session.events.length,
-        elements: this.session.elements.length,
-      });
-    }
+    this.log('Recording stopped', {
+      events: this.session.events.length,
+      elements: this.session.elements.length,
+    });
 
     return this.getSession();
   }
 
-  /**
-   * Flush pending batched events.
-   * Call this on lifecycle events (background, visibility hidden).
-   */
+  /** Call on lifecycle events (background, visibility hidden) to avoid data loss. */
   flush(): void {
     this.batcher.flush();
   }
 
-  /**
-   * Clean up resources.
-   */
   destroy(): void {
+    // Destroy registered capabilities in reverse order (LIFO)
+    for (let i = this.capabilities.length - 1; i >= 0; i--) {
+      this.capabilities[i].destroy();
+    }
+    this.capabilities = [];
+
+    if (this.performanceProvider) {
+      this.performanceProvider.stop();
+      this.performanceProvider = null;
+    }
+    if (this.networkInterceptor) {
+      this.networkInterceptor.uninstall();
+      this.networkInterceptor = null;
+    }
     this.batcher.destroy();
     this.session = null;
     this.recording = false;
+  }
+
+  /**
+   * Restore internal state from a previously persisted session.
+   * Used by platform recorders (e.g., web persistence across page loads).
+   */
+  protected restoreState(state: {
+    session: GremlinSession;
+    recording: boolean;
+    lastEventTimestamp: number;
+    elementMap: Map<string, number>;
+    unknownElementCounter: number;
+  }): void {
+    this.session = state.session;
+    this.recording = state.recording;
+    this.lastEventTimestamp = state.lastEventTimestamp;
+    this.elementMap = state.elementMap;
+    this.unknownElementCounter = state.unknownElementCounter;
   }
 
   isRecording(): boolean {
@@ -191,33 +273,27 @@ export abstract class BaseRecorder {
     return this.session?.events.length ?? 0;
   }
 
-  // ========================================================================
-  // Event Recording
-  // ========================================================================
-
-  /**
-   * Add event to session with delta-encoded timestamp.
-   */
   protected addEventToSession(event: Omit<GremlinEvent, 'dt'>): void {
     if (!this.recording || !this.session) return;
+
+    // Auto-attach perf sample if provider is active and event doesn't already have one
+    let enrichedEvent = event;
+    if (this.performanceProvider && !event.perf) {
+      enrichedEvent = { ...event, perf: this.performanceProvider.getCurrentSample() };
+    }
 
     const now = Date.now();
     const dt = now - this.lastEventTimestamp;
     this.lastEventTimestamp = now;
 
     const fullEvent: GremlinEvent = {
-      ...event,
+      ...enrichedEvent,
       dt,
     };
 
     this.session.events.push(fullEvent);
 
-    if (this.config.debug) {
-      console.log(`[Gremlin] Event: ${EventTypeEnum[event.type]}`, {
-        dt,
-        data: event.data,
-      });
-    }
+    this.log(`Event: ${EventTypeEnum[enrichedEvent.type]}`, { dt, data: enrichedEvent.data });
   }
 
   /**
@@ -251,9 +327,16 @@ export abstract class BaseRecorder {
     return index;
   }
 
-  // ========================================================================
-  // Public Recording Methods
-  // ========================================================================
+  /**
+   * Install a network interceptor with the given config.
+   * Resets the request counter and patches fetch/XHR.
+   * The interceptor is automatically uninstalled in stop() and destroy().
+   */
+  protected installNetworkInterceptor(config: NetworkInterceptorConfig): void {
+    this.networkInterceptor = new NetworkInterceptor(config);
+    this.networkInterceptor.resetCounter();
+    this.networkInterceptor.install();
+  }
 
   /**
    * Record a tap/click event.
@@ -321,9 +404,6 @@ export abstract class BaseRecorder {
     });
   }
 
-  /**
-   * Record a navigation event.
-   */
   recordNavigation(
     screen: string,
     navType: NavigationEvent['navType'] = 'push',
@@ -347,9 +427,6 @@ export abstract class BaseRecorder {
     this.currentScreen = screen;
   }
 
-  /**
-   * Record an error event.
-   */
   recordError(
     message: string,
     errorType: ErrorEvent['errorType'] = 'js',
@@ -368,9 +445,7 @@ export abstract class BaseRecorder {
     });
   }
 
-  /**
-   * Record an app state change (background/foreground).
-   */
+  /** Also flushes scroll batch when going to background/inactive. */
   recordAppState(state: AppStateEvent['state']): void {
     // Flush scroll batch when going to background
     if (state === 'background' || state === 'inactive') {
@@ -394,13 +469,6 @@ export abstract class BaseRecorder {
     this.currentScreen = screen;
   }
 
-  // ========================================================================
-  // Analytics Helpers
-  // ========================================================================
-
-  /**
-   * Get time from session start to reaching a specific screen (ms).
-   */
   getTimeToScreen(screenName: string): number | null {
     if (!this.session) return null;
 
@@ -417,9 +485,6 @@ export abstract class BaseRecorder {
     return null;
   }
 
-  /**
-   * Get number of taps before reaching a specific screen.
-   */
   getTapsToScreen(screenName: string): number | null {
     if (!this.session) return null;
 
@@ -438,9 +503,6 @@ export abstract class BaseRecorder {
     return null;
   }
 
-  /**
-   * Get navigation flow (sequence of screens visited).
-   */
   getNavigationFlow(): string[] {
     if (!this.session) return [];
 

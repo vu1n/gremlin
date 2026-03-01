@@ -5,11 +5,7 @@
  * otherwise falls through to existing human-readable console output.
  */
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface JsonEnvelope<T = unknown> {
+interface JsonEnvelope<T = unknown> {
   ok: boolean;
   command: string;
   data: T;
@@ -21,10 +17,6 @@ export interface JsonEnvelope<T = unknown> {
 export interface OutputOptions {
   json?: boolean;
 }
-
-// ============================================================================
-// Output Functions
-// ============================================================================
 
 /**
  * Output command result. Prints JSON envelope to stdout if --json,
@@ -54,7 +46,8 @@ export function output<T>(
 }
 
 /**
- * Output command error. Prints JSON envelope to stderr if --json,
+ * Output command error. Prints JSON envelope to stdout if --json
+ * (consistent with `output()` so JSON consumers can read a single stream),
  * otherwise does nothing (caller handles human output).
  *
  * Returns true if JSON was printed.
@@ -76,8 +69,24 @@ export function outputError(
 
   if (extra?.meta) envelope.meta = extra.meta;
 
-  console.error(JSON.stringify(envelope));
+  console.log(JSON.stringify(envelope));
   return true;
+}
+
+/**
+ * Print error (JSON or human) and exit.
+ * Replaces the verbose dual-path pattern: outputError → exit / console.error → exit
+ */
+export function exitWithError(
+  command: string,
+  message: string,
+  opts: OutputOptions,
+  extra?: { data?: unknown; meta?: Record<string, unknown> }
+): never {
+  if (!outputError(command, [message], opts, extra)) {
+    console.error(message);
+  }
+  process.exit(1);
 }
 
 /**

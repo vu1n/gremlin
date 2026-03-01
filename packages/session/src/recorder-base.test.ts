@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { BaseRecorder } from './recorder-base';
-import type { BaseRecorderConfig } from './recorder-base';
-import type { DeviceInfo, AppInfo, ScrollEvent, TapEvent, InputEvent, NavigationEvent, ErrorEvent, AppStateEvent } from './types';
-import { EventTypeEnum } from './types';
+import { BaseRecorder } from './recorder-base.ts';
+import type { BaseRecorderConfig } from './recorder-base.ts';
+import type { DeviceInfo, AppInfo, ScrollEvent, TapEvent, InputEvent, NavigationEvent, ErrorEvent, AppStateEvent } from './types.ts';
+import { EventTypeEnum } from './types.ts';
 
 // Concrete test implementation of abstract BaseRecorder
 class TestRecorder extends BaseRecorder {

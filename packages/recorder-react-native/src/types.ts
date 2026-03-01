@@ -6,9 +6,6 @@
 import type { GremlinEvent } from '@gremlin/session';
 export type { GremlinEvent };
 
-/**
- * Transport configuration for uploading sessions
- */
 export interface TransportConfig {
   /**
    * Dev server endpoint.
@@ -38,24 +35,14 @@ export interface TransportConfig {
    */
   batchInterval?: number;
 
-  /** Debug logging */
   debug?: boolean;
 }
 
-/**
- * Configuration for the React Native recorder
- */
 export interface GremlinRecorderConfig {
-  /** App name */
   appName: string;
-
-  /** App version */
   appVersion: string;
-
-  /** Build number */
   appBuild?: string;
 
-  /** Auto-start recording on mount */
   autoStart?: boolean;
 
   /**
@@ -64,34 +51,23 @@ export interface GremlinRecorderConfig {
    */
   transport?: TransportConfig | false;
 
-  /** Sample performance metrics */
   capturePerformance?: boolean;
-
-  /** Performance sample interval (ms) */
+  /** ms */
   performanceInterval?: number;
-
-  /** Mask sensitive inputs */
   maskInputs?: boolean;
 
   /** Emit events to callback (for real-time streaming) */
   onEvent?: (event: GremlinEvent) => void;
 
-  /** Enable gesture interception */
   captureGestures?: boolean;
-
-  /** Enable navigation tracking */
   captureNavigation?: boolean;
-
-  /** Minimum swipe distance (px) */
+  /** px */
   minSwipeDistance?: number;
-
-  /** Long press duration (ms) */
+  /** ms */
   longPressDuration?: number;
-
-  /** Double tap max delay (ms) */
+  /** ms */
   doubleTapDelay?: number;
-
-  /** Debounce scroll events (ms) */
+  /** ms */
   scrollDebounce?: number;
 
   /** Capture network requests (fetch and XHR) (default: true) */
@@ -101,28 +77,21 @@ export interface GremlinRecorderConfig {
   networkIgnorePatterns?: string[];
 }
 
-/**
- * Touch tracking data
- */
 export interface TouchData {
   identifier: number;
   pageX: number;
   pageY: number;
   timestamp: number;
-  target?: any;
+  /** React Native touch event target (opaque native ref) */
+  target?: unknown;
 }
 
-/**
- * React Navigation reference type (if available)
- */
+/** Minimal structural type for React Navigation's NavigationContainerRef. */
 export interface NavigationRef {
-  addListener: (event: string, callback: (...args: any[]) => void) => () => void;
-  getCurrentRoute: () => { name: string; params?: any } | undefined;
+  addListener: (event: string, callback: (...args: unknown[]) => void) => () => void;
+  getCurrentRoute: () => { name: string; params?: Record<string, unknown> } | undefined;
 }
 
-/**
- * View measurement result
- */
 export interface ViewMeasurement {
   x: number;
   y: number;
@@ -132,9 +101,6 @@ export interface ViewMeasurement {
   pageY: number;
 }
 
-/**
- * Element info extracted from React Native view
- */
 export interface ExtractedElementInfo {
   testID?: string;
   accessibilityLabel?: string;

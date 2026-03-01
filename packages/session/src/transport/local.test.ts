@@ -7,12 +7,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { LocalTransport } from './local';
-import type { GremlinSession } from '../types';
-
-// ============================================================================
-// Mock Server
-// ============================================================================
+import { LocalTransport } from './local.ts';
+import type { GremlinSession } from '../types.ts';
 
 let mockServer: ReturnType<typeof Bun.serve>;
 let mockUrl: string;
@@ -37,7 +33,7 @@ beforeAll(() => {
         });
       }
 
-      if (url.pathname === '/session' && req.method === 'POST') {
+      if (url.pathname === '/v1/sessions' && req.method === 'POST') {
         if (serverStatus !== 200) {
           return new Response('Error', { status: serverStatus });
         }
@@ -63,10 +59,6 @@ beforeEach(() => {
   requestCount = 0;
 });
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function makeSession(id?: string): GremlinSession {
   return {
     header: {
@@ -82,10 +74,6 @@ function makeSession(id?: string): GremlinSession {
   } as GremlinSession;
 }
 
-// ============================================================================
-// Tests: Successful Upload
-// ============================================================================
-
 describe('upload to server', () => {
   it('uploads session successfully', async () => {
     const transport = new LocalTransport({ endpoint: mockUrl, retryAttempts: 0 });
@@ -95,17 +83,13 @@ describe('upload to server', () => {
     expect(receivedSessions).toHaveLength(1);
   });
 
-  it('sends session as JSON POST to /session', async () => {
+  it('sends session as JSON POST to /v1/sessions', async () => {
     const transport = new LocalTransport({ endpoint: mockUrl, retryAttempts: 0 });
     const session = makeSession('specific-id');
     await transport.upload(session);
     expect(receivedSessions[0].header.sessionId).toBe('specific-id');
   });
 });
-
-// ============================================================================
-// Tests: Server Failure + Fallback
-// ============================================================================
 
 describe('server failure', () => {
   it('returns failure when server is down and no fallback', async () => {
@@ -148,10 +132,6 @@ describe('server failure', () => {
   });
 });
 
-// ============================================================================
-// Tests: Retry Logic
-// ============================================================================
-
 describe('retry logic', () => {
   it('retries on 5xx and succeeds', async () => {
     let callCount = 0;
@@ -161,7 +141,7 @@ describe('retry logic', () => {
       async fetch(req) {
         callCount++;
         const url = new URL(req.url);
-        if (url.pathname === '/session' && req.method === 'POST') {
+        if (url.pathname === '/v1/sessions' && req.method === 'POST') {
           if (callCount === 1) return new Response('Error', { status: 500 });
           const body = await req.json();
           receivedSessions.push(body);
@@ -187,10 +167,6 @@ describe('retry logic', () => {
     }
   });
 });
-
-// ============================================================================
-// Tests: Health Check
-// ============================================================================
 
 describe('checkServer', () => {
   it('returns true when server is healthy', async () => {

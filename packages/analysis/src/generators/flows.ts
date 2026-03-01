@@ -9,7 +9,7 @@ import type {
   GremlinSpec,
   Transition,
   StateId,
-} from '../spec/types';
+} from '../spec/types.ts';
 
 export interface Flow {
   name: string;
@@ -22,6 +22,35 @@ export interface Flow {
 export function getStateName(spec: GremlinSpec, stateId: StateId): string {
   const state = spec.states.find((s) => s.id === stateId);
   return state?.name || stateId;
+}
+
+/**
+ * Build a Flow record from a DFS path. Shared by both the primary DFS
+ * (terminal-state paths) and the SPA fallback (dead-end / max-depth paths).
+ */
+function createFlowRecord(
+  spec: GremlinSpec,
+  path: Transition[],
+  existingFlows: Flow[]
+): Flow {
+  const startState = path[0].from;
+  const endState = path[path.length - 1].to;
+
+  const keyEvents = path
+    .slice(0, 3)
+    .map((t) => t.event.element?.testId || t.event.type)
+    .join(', ');
+  const flowIndex = existingFlows.filter(
+    (f) => f.startState === startState && f.endState === endState
+  ).length;
+
+  return {
+    name: `${getStateName(spec, startState)}_to_${getStateName(spec, endState)}_${flowIndex + 1}`,
+    description: `Flow from ${getStateName(spec, startState)} to ${getStateName(spec, endState)} via ${keyEvents}`,
+    transitions: [...path],
+    startState,
+    endState,
+  };
 }
 
 export function extractFlows(spec: GremlinSpec): Flow[] {
@@ -43,6 +72,13 @@ export function extractFlows(spec: GremlinSpec): Flow[] {
   // Find all paths from initial state to terminal states
   const visited = new Set<string>();
 
+  function tryRecordPath(path: Transition[]): void {
+    const pathKey = path.map((t) => t.id).join('->');
+    if (visited.has(pathKey)) return;
+    visited.add(pathKey);
+    flows.push(createFlowRecord(spec, path, flows));
+  }
+
   function dfs(
     currentState: StateId,
     path: Transition[],
@@ -51,31 +87,7 @@ export function extractFlows(spec: GremlinSpec): Flow[] {
     if (maxDepth <= 0) return;
 
     if (terminalStates.has(currentState) && path.length > 0) {
-      const pathKey = path.map((t) => t.id).join('->');
-      if (!visited.has(pathKey)) {
-        visited.add(pathKey);
-
-        const startState = path[0].from;
-        const endState = path[path.length - 1].to;
-
-        // Generate descriptive name including key events
-        const keyEvents = path
-          .slice(0, 3)
-          .map((t) => t.event.element?.testId || t.event.type)
-          .join('_');
-        const flowIndex = flows.filter(
-          (f) => f.startState === startState && f.endState === endState
-        ).length;
-        const uniqueSuffix = flowIndex > 0 ? `_${flowIndex + 1}` : '';
-
-        flows.push({
-          name: `${getStateName(spec, startState)}_to_${getStateName(spec, endState)}${uniqueSuffix}`,
-          description: `Flow from ${getStateName(spec, startState)} to ${getStateName(spec, endState)} via ${keyEvents}`,
-          transitions: [...path],
-          startState,
-          endState,
-        });
-      }
+      tryRecordPath(path);
       return;
     }
 
@@ -100,7 +112,7 @@ export function extractFlows(spec: GremlinSpec): Flow[] {
       maxDepth: number
     ): void {
       if (maxDepth <= 0 && path.length > 0) {
-        recordFallbackFlow(path);
+        tryRecordPath(path);
         return;
       }
 
@@ -108,38 +120,13 @@ export function extractFlows(spec: GremlinSpec): Flow[] {
       const available = outgoing.filter((t) => !path.some((p) => p.id === t.id));
 
       if (available.length === 0 && path.length > 0) {
-        recordFallbackFlow(path);
+        tryRecordPath(path);
         return;
       }
 
       for (const transition of available) {
         dfsFallback(transition.to, [...path, transition], maxDepth - 1);
       }
-    }
-
-    function recordFallbackFlow(path: Transition[]): void {
-      const pathKey = path.map((t) => t.id).join('->');
-      if (visited.has(pathKey)) return;
-      visited.add(pathKey);
-
-      const startState = path[0].from;
-      const endState = path[path.length - 1].to;
-      const keyEvents = path
-        .slice(0, 3)
-        .map((t) => t.event.element?.testId || t.event.type)
-        .join('_');
-      const flowIndex = flows.filter(
-        (f) => f.startState === startState && f.endState === endState
-      ).length;
-      const uniqueSuffix = flowIndex > 0 ? `_${flowIndex + 1}` : '';
-
-      flows.push({
-        name: `${getStateName(spec, startState)}_to_${getStateName(spec, endState)}${uniqueSuffix}`,
-        description: `Flow from ${getStateName(spec, startState)} to ${getStateName(spec, endState)} via ${keyEvents}`,
-        transitions: [...path],
-        startState,
-        endState,
-      });
     }
 
     dfsFallback(spec.initialState, [], 10);

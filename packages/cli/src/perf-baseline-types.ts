@@ -7,10 +7,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface MetricBudget {
   p50: number;
   p75: number;
@@ -29,6 +25,8 @@ export interface PerfBaselineFlow {
   pattern: string[];
   sessionCount: number;
   budgets: FlowBudgets;
+  /** Actual session IDs that contributed to this flow's baseline. */
+  sessionIds?: string[];
 }
 
 export interface PerfBaseline {
@@ -47,10 +45,6 @@ export interface PerfBaseline {
   flows: PerfBaselineFlow[];
 }
 
-// ============================================================================
-// I/O Helpers
-// ============================================================================
-
 const DEFAULT_PATH = '.gremlin/perf-baseline.json';
 
 export function readBaseline(path?: string): PerfBaseline | null {
@@ -59,7 +53,8 @@ export function readBaseline(path?: string): PerfBaseline | null {
   try {
     const content = readFileSync(p, 'utf-8');
     return JSON.parse(content) as PerfBaseline;
-  } catch {
+  } catch (err) {
+    console.warn(`Warning: Failed to parse baseline file ${p}:`, err instanceof Error ? err.message : err);
     return null;
   }
 }

@@ -22,33 +22,20 @@ import type {
   FlowBudgets,
 } from '../perf-baseline-types.ts';
 import { readBaseline, writeBaseline } from '../perf-baseline-types.ts';
+import { percentile } from '../stats.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface PerfBaselineOptions extends OutputOptions {
+interface PerfBaselineOptions extends OutputOptions {
   input?: string;
   margin?: number;
   update?: boolean;
 }
 
-export interface PerfBaselineResult {
+interface PerfBaselineResult {
   path: string;
   sessionCount: number;
   flowCount: number;
   margin: number;
   baseline: PerfBaseline;
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
 }
 
 function computeMetricBudget(
@@ -252,37 +239,10 @@ function mergeBaseline(
   };
 }
 
-// ============================================================================
-// Command
-// ============================================================================
-
-export async function perfBaseline(
-  options: PerfBaselineOptions
-): Promise<PerfBaselineResult | null> {
-  const input = options.input ?? '.gremlin/sessions';
-  const margin = options.margin ?? 1.4;
-  const baselinePath = '.gremlin/perf-baseline.json';
-
-  // Validate input directory
-  if (!existsSync(input)) {
-    if (
-      outputError('perf-baseline', ['Sessions directory not found: ' + input], options)
-    )
-      return null;
-    console.error(`Sessions directory not found: ${input}`);
-    console.error('Run your app with `gremlin dev` to collect sessions first.');
-    return null;
-  }
-
+function loadSessionsWithPerf(
+  input: string
+): { sessionsWithPerf: { session: GremlinSession; perf: SessionPerformance }[]; totalLoaded: number; warnings: string[] } {
   const files = readdirSync(input).filter((f) => f.endsWith('.json'));
-  if (files.length === 0) {
-    if (outputError('perf-baseline', ['No session files found in ' + input], options))
-      return null;
-    console.error(`No session files found in ${input}`);
-    return null;
-  }
-
-  // Load sessions with performance data
   const sessionsWithPerf: { session: GremlinSession; perf: SessionPerformance }[] = [];
   const warnings: string[] = [];
   let totalLoaded = 0;
@@ -300,90 +260,51 @@ export async function perfBaseline(
     }
   }
 
-  if (sessionsWithPerf.length === 0) {
-    if (
-      outputError(
-        'perf-baseline',
-        [`Found ${totalLoaded} sessions but none have performance data`],
-        options
-      )
-    )
-      return null;
-    console.error(
-      `Found ${totalLoaded} sessions but none have performance data.`
-    );
-    return null;
-  }
+  return { sessionsWithPerf, totalLoaded, warnings };
+}
 
-  // Collect Web Vitals values
-  const lcpValues: number[] = [];
-  const clsValues: number[] = [];
-  const inpValues: number[] = [];
-  const fcpValues: number[] = [];
-  const ttfbValues: number[] = [];
+function collectWebVitalValues(
+  sessionsWithPerf: { perf: SessionPerformance }[]
+): { lcp: number[]; cls: number[]; inp: number[]; fcp: number[]; ttfb: number[] } {
+  const lcp: number[] = [];
+  const cls: number[] = [];
+  const inp: number[] = [];
+  const fcp: number[] = [];
+  const ttfb: number[] = [];
 
   for (const { perf } of sessionsWithPerf) {
-    if (perf.webVitals?.lcp !== undefined) lcpValues.push(perf.webVitals.lcp);
-    if (perf.webVitals?.cls !== undefined) clsValues.push(perf.webVitals.cls);
-    if (perf.webVitals?.inp !== undefined) inpValues.push(perf.webVitals.inp);
-    if (perf.webVitals?.fcp !== undefined) fcpValues.push(perf.webVitals.fcp);
-    if (perf.webVitals?.ttfb !== undefined) ttfbValues.push(perf.webVitals.ttfb);
+    if (perf.webVitals?.lcp !== undefined) lcp.push(perf.webVitals.lcp);
+    if (perf.webVitals?.cls !== undefined) cls.push(perf.webVitals.cls);
+    if (perf.webVitals?.inp !== undefined) inp.push(perf.webVitals.inp);
+    if (perf.webVitals?.fcp !== undefined) fcp.push(perf.webVitals.fcp);
+    if (perf.webVitals?.ttfb !== undefined) ttfb.push(perf.webVitals.ttfb);
   }
 
-  // Build global budgets (use zero-budget fallback for metrics with no data)
+  return { lcp, cls, inp, fcp, ttfb };
+}
+
+function buildGlobalBudgets(
+  vitals: { lcp: number[]; cls: number[]; inp: number[]; fcp: number[]; ttfb: number[] },
+  margin: number
+): PerfBaseline['global'] {
   const zeroBudget: MetricBudget = { p50: 0, p75: 0, p95: 0, budget: 0 };
-
-  const global = {
-    lcp: computeMetricBudget(lcpValues, margin) ?? zeroBudget,
-    cls: computeMetricBudget(clsValues, margin) ?? zeroBudget,
-    inp: computeMetricBudget(inpValues, margin) ?? zeroBudget,
-    fcp: computeMetricBudget(fcpValues, margin) ?? zeroBudget,
-    ttfb: computeMetricBudget(ttfbValues, margin) ?? zeroBudget,
+  return {
+    lcp: computeMetricBudget(vitals.lcp, margin) ?? zeroBudget,
+    cls: computeMetricBudget(vitals.cls, margin) ?? zeroBudget,
+    inp: computeMetricBudget(vitals.inp, margin) ?? zeroBudget,
+    fcp: computeMetricBudget(vitals.fcp, margin) ?? zeroBudget,
+    ttfb: computeMetricBudget(vitals.ttfb, margin) ?? zeroBudget,
   };
+}
 
-  // Build flow baselines
-  const flowMap = extractFlows(sessionsWithPerf);
-  const flows = buildFlowBaselines(flowMap, margin);
-
-  const now = new Date().toISOString();
-  let baseline: PerfBaseline = {
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    sessionCount: sessionsWithPerf.length,
-    margin,
-    global,
-    flows,
-  };
-
-  // Merge with existing baseline if --update
-  if (options.update) {
-    const existing = readBaseline(baselinePath);
-    if (existing) {
-      baseline = mergeBaseline(existing, baseline);
-      baseline.createdAt = existing.createdAt; // Preserve original creation time
-    }
-  }
-
-  // Write baseline
-  writeBaseline(baseline, baselinePath);
-
-  const result: PerfBaselineResult = {
-    path: baselinePath,
-    sessionCount: baseline.sessionCount,
-    flowCount: baseline.flows.length,
-    margin,
-    baseline,
-  };
-
-  if (
-    output('perf-baseline', result, options, {
-      warnings: warnings.length > 0 ? warnings : undefined,
-    })
-  )
-    return result;
-
-  // Human-readable output
+function printBaselineResult(
+  baseline: PerfBaseline,
+  baselinePath: string,
+  margin: number,
+  flows: PerfBaselineFlow[],
+  isUpdate: boolean,
+  warnings: string[]
+): void {
   console.log('');
   console.log('Performance Baseline');
   console.log('====================');
@@ -427,7 +348,7 @@ export async function perfBaseline(
     }
   }
 
-  if (options.update) {
+  if (isUpdate) {
     console.log('');
     console.log('(Merged with existing baseline — tighter budgets kept)');
   }
@@ -439,6 +360,95 @@ export async function perfBaseline(
       console.warn(`  warn: ${w}`);
     }
   }
+}
+
+export function perfBaseline(
+  options: PerfBaselineOptions
+): PerfBaselineResult | null {
+  const input = options.input ?? '.gremlin/sessions';
+  const margin = options.margin ?? 1.4;
+  const baselinePath = '.gremlin/perf-baseline.json';
+
+  // Validate input directory
+  if (!existsSync(input)) {
+    if (
+      outputError('perf-baseline', ['Sessions directory not found: ' + input], options)
+    )
+      return null;
+    console.error(`Sessions directory not found: ${input}`);
+    console.error('Run your app with `gremlin dev` to collect sessions first.');
+    return null;
+  }
+
+  const files = readdirSync(input).filter((f) => f.endsWith('.json'));
+  if (files.length === 0) {
+    if (outputError('perf-baseline', ['No session files found in ' + input], options))
+      return null;
+    console.error(`No session files found in ${input}`);
+    return null;
+  }
+
+  const { sessionsWithPerf, totalLoaded, warnings } = loadSessionsWithPerf(input);
+
+  if (sessionsWithPerf.length === 0) {
+    if (
+      outputError(
+        'perf-baseline',
+        [`Found ${totalLoaded} sessions but none have performance data`],
+        options
+      )
+    )
+      return null;
+    console.error(
+      `Found ${totalLoaded} sessions but none have performance data.`
+    );
+    return null;
+  }
+
+  const vitalValues = collectWebVitalValues(sessionsWithPerf);
+  const global = buildGlobalBudgets(vitalValues, margin);
+
+  const flowMap = extractFlows(sessionsWithPerf);
+  const flows = buildFlowBaselines(flowMap, margin);
+
+  const now = new Date().toISOString();
+  let baseline: PerfBaseline = {
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    sessionCount: sessionsWithPerf.length,
+    margin,
+    global,
+    flows,
+  };
+
+  // Merge with existing baseline if --update
+  if (options.update) {
+    const existing = readBaseline(baselinePath);
+    if (existing) {
+      baseline = mergeBaseline(existing, baseline);
+      baseline.createdAt = existing.createdAt;
+    }
+  }
+
+  writeBaseline(baseline, baselinePath);
+
+  const result: PerfBaselineResult = {
+    path: baselinePath,
+    sessionCount: baseline.sessionCount,
+    flowCount: baseline.flows.length,
+    margin,
+    baseline,
+  };
+
+  if (
+    output('perf-baseline', result, options, {
+      warnings: warnings.length > 0 ? warnings : undefined,
+    })
+  )
+    return result;
+
+  printBaselineResult(baseline, baselinePath, margin, flows, !!options.update, warnings);
 
   return result;
 }

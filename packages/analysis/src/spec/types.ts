@@ -5,9 +5,6 @@
  * Must be serializable to: TLA+, Playwright, Maestro, XState
  */
 
-// ============================================================================
-// Identifiers
-// ============================================================================
 
 export type StateId = string & { readonly __brand: 'StateId' };
 export type TransitionId = string & { readonly __brand: 'TransitionId' };
@@ -22,9 +19,6 @@ export function transitionId(id: string): TransitionId {
   return id as TransitionId;
 }
 
-// ============================================================================
-// Core Spec Types
-// ============================================================================
 
 /**
  * The main state machine specification.
@@ -79,9 +73,6 @@ export interface SpecMetadata {
   appVersions: string[];
 }
 
-// ============================================================================
-// State
-// ============================================================================
 
 /**
  * A state in the application's behavior model.
@@ -116,9 +107,6 @@ export interface State {
   metadata?: Record<string, unknown>;
 }
 
-// ============================================================================
-// Transition
-// ============================================================================
 
 /**
  * A transition between states, triggered by a user action.
@@ -181,9 +169,6 @@ export type EventType =
   | 'network_response'
   | 'timeout';
 
-// ============================================================================
-// Variables
-// ============================================================================
 
 /**
  * A variable that can change during app execution.
@@ -213,9 +198,6 @@ export type VariableType =
   | 'array'
   | 'object';
 
-// ============================================================================
-// Properties (for verification)
-// ============================================================================
 
 /**
  * A property to verify using model checking.
@@ -251,9 +233,6 @@ export type PropertyType =
   | 'never'        // Never true
   | 'leads_to';    // X leads to Y
 
-// ============================================================================
-// Cycles
-// ============================================================================
 
 /**
  * Information about a detected cycle in the state machine.
@@ -282,9 +261,6 @@ export interface CycleInfo {
   description?: string;
 }
 
-// ============================================================================
-// Coverage
-// ============================================================================
 
 /**
  * Coverage information comparing code (AST) analysis with observed session data.
@@ -322,9 +298,6 @@ export interface CoverageInfo {
   };
 }
 
-// ============================================================================
-// Predicates
-// ============================================================================
 
 /**
  * A predicate (boolean expression) used in guards and properties.
@@ -348,9 +321,6 @@ export type PredicateValue =
 
 export type ComparisonOp = '==' | '!=' | '<' | '<=' | '>' | '>=' | 'contains';
 
-// ============================================================================
-// Actions
-// ============================================================================
 
 /**
  * An action performed during a transition.
@@ -364,9 +334,6 @@ export type Action =
   | { type: 'clear'; variable: string }
   | { type: 'sequence'; actions: Action[] };
 
-// ============================================================================
-// References
-// ============================================================================
 
 /**
  * Reference to a UI element.
@@ -421,16 +388,15 @@ export interface ScreenshotRef {
   height: number;
 }
 
-// ============================================================================
-// Factory functions
-// ============================================================================
+
+import { SCHEMA_VERSION } from '@gremlin/session';
 
 export function createSpec(name: string, platform: SpecMetadata['platform']): GremlinSpec {
   const now = new Date().toISOString();
   const initial = createState('initial', 'Initial', 'session');
   return {
     name,
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     variables: [],
     states: [initial],
     initialState: initial.id,

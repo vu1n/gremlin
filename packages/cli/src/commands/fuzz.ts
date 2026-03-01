@@ -4,17 +4,14 @@
  * Generates chaos/fuzz tests from GremlinSpec to find edge cases and bugs.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSpec, FuzzStrategy } from '@gremlin/analysis';
+import { ensureDir } from './shared/sessions.ts';
 import { generateFuzzTests, fuzzTestsToPlaywrightFile } from '@gremlin/analysis';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { output, exitWithError, type OutputOptions } from '../output.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface FuzzOptions extends OutputOptions {
+interface FuzzOptions extends OutputOptions {
   spec?: string;
   output?: string;
   strategy?: string;
@@ -22,17 +19,13 @@ export interface FuzzOptions extends OutputOptions {
   seed?: number;
 }
 
-export interface FuzzResult {
+interface FuzzResult {
   testCount: number;
   strategies: string[];
   outputPath: string;
   seed: number;
   bugCategories: string[];
 }
-
-// ============================================================================
-// Main Command
-// ============================================================================
 
 export async function fuzz(options: FuzzOptions): Promise<FuzzResult | null> {
   const {
@@ -51,12 +44,7 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzResult | null> {
   }
 
   if (!existsSync(specPath)) {
-    if (outputError('fuzz', [`Spec file not found: ${specPath}. Run "gremlin generate" first.`], options)) {
-      process.exit(1);
-    }
-    console.error(`Spec file not found: ${specPath}`);
-    console.error('Run "gremlin generate" first to create a spec, or use --spec to specify a path');
-    process.exit(1);
+    exitWithError('fuzz', `Spec file not found: ${specPath}. Run "gremlin generate" first.`, options);
   }
 
   let gremlinSpec: GremlinSpec;
@@ -65,11 +53,7 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzResult | null> {
     gremlinSpec = JSON.parse(specJson);
     if (!json) console.log(`   Found ${gremlinSpec.states.length} states, ${gremlinSpec.transitions.length} transitions`);
   } catch (e) {
-    if (outputError('fuzz', [`Failed to load spec: ${e}`], options)) {
-      process.exit(1);
-    }
-    console.error(`Failed to load spec: ${e}`);
-    process.exit(1);
+    exitWithError('fuzz', `Failed to load spec: ${e}`, options);
   }
 
   // Parse strategies
@@ -157,10 +141,6 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzResult | null> {
   return result;
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function parseStrategies(strategy: string): FuzzStrategy[] {
   const ALL_STRATEGIES: FuzzStrategy[] = [
     'random_walk',
@@ -220,8 +200,3 @@ function formatStrategyName(strategy: string): string {
     .join(' ');
 }
 
-function ensureDir(dir: string): void {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}

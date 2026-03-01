@@ -3,15 +3,11 @@
  *
  * Works with both the Cloudflare Workers server (@gremlin/server) and
  * the self-hosted server (@gremlin/server-node). Unlike LocalTransport
- * which talks to the dev server at /session, this transport uses the
+ * which talks to the dev server at /v1/sessions, this transport uses the
  * production API at /v1/sessions with API key authentication.
  */
 
-import type { GremlinSession } from '../types';
-
-// ============================================================================
-// Types
-// ============================================================================
+import type { GremlinSession } from '../types.ts';
 
 export interface ServerTransportConfig {
   /** Server URL (e.g., 'https://gremlin.example.com') */
@@ -20,16 +16,15 @@ export interface ServerTransportConfig {
   /** API key for X-API-Key header */
   apiKey: string;
 
-  /** Request timeout in ms (default: 10000) */
+  /** ms, default: 10000 */
   timeout?: number;
 
-  /** Retry attempts (default: 2) */
+  /** Default: 2 */
   retryAttempts?: number;
 
-  /** Base retry delay in ms (default: 500) */
+  /** ms, default: 500 */
   retryDelayMs?: number;
 
-  /** Debug logging */
   debug?: boolean;
 }
 
@@ -39,12 +34,16 @@ export interface ServerTransportResult {
   error?: string;
 }
 
-// ============================================================================
-// ServerTransport
-// ============================================================================
+type LogFn = (msg: string, ...args: unknown[]) => void;
+
+function createLogger(debug: boolean): LogFn {
+  if (!debug) return () => {};
+  return (msg, ...args) => console.log(`[ServerTransport] ${msg}`, ...args);
+}
 
 export class ServerTransport {
   private config: Required<ServerTransportConfig>;
+  private log: LogFn;
 
   constructor(config: ServerTransportConfig) {
     // Strip trailing slash from serverUrl
@@ -58,11 +57,14 @@ export class ServerTransport {
       retryDelayMs: config.retryDelayMs ?? 500,
       debug: config.debug ?? false,
     };
+    this.log = createLogger(this.config.debug);
   }
 
-  /**
-   * Upload a session to the production server.
-   */
+  /** Return the configured server URL (endpoint). */
+  getEndpoint(): string {
+    return this.config.serverUrl;
+  }
+
   async upload(session: GremlinSession): Promise<ServerTransportResult> {
     const maxAttempts = Math.max(1, this.config.retryAttempts + 1);
 
@@ -80,11 +82,9 @@ export class ServerTransport {
 
         if (response.ok) {
           const data = await response.json() as { id?: string };
-          if (this.config.debug) {
-            console.log('[ServerTransport] Session uploaded', {
-              sessionId: data.id ?? session.header.sessionId,
-            });
-          }
+          this.log('Session uploaded', {
+            sessionId: data.id ?? session.header.sessionId,
+          });
           return { success: true, sessionId: data.id ?? session.header.sessionId };
         }
 
@@ -103,9 +103,7 @@ export class ServerTransport {
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         if (i === maxAttempts - 1) {
-          if (this.config.debug) {
-            console.log('[ServerTransport] Upload failed', message);
-          }
+          this.log('Upload failed', message);
           return { success: false, error: message };
         }
       }
@@ -119,9 +117,6 @@ export class ServerTransport {
     return { success: false, error: 'Retry attempts exhausted' };
   }
 
-  /**
-   * Check if the server is reachable.
-   */
   async checkServer(): Promise<boolean> {
     try {
       const response = await fetch(`${this.config.serverUrl}/`, {

@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { join, relative, basename } from 'node:path';
-import type { Route, RouteExtractorConfig, RouteExtractionResult } from '../../types.js';
+import { join, relative } from 'node:path';
+import type { Route, RouteExtractorConfig, RouteExtractionResult } from '../../types.ts';
 
 /**
  * Extract routes from a vanilla web app (HTML files + links)
@@ -19,7 +19,7 @@ export async function extractVanillaWebRoutes(
 
   try {
     // Step 1: Find all HTML files (file-based routes)
-    const htmlFiles = await findHtmlFiles(config.rootDir, config.exclude);
+    const htmlFiles = await findHtmlFiles(config.rootDir, config.exclude, errors);
     filesScanned = htmlFiles.length;
 
     // Step 2: First pass - add all file-based routes
@@ -96,11 +96,13 @@ export async function extractVanillaWebRoutes(
 }
 
 /**
- * Recursively find all HTML files in a directory
+ * Recursively find all HTML files in a directory.
+ * Directory read errors are pushed into the errors array instead of being swallowed.
  */
 async function findHtmlFiles(
   dir: string,
-  exclude: string[] = []
+  exclude: string[] = [],
+  errors: Array<{ file: string; message: string }> = []
 ): Promise<string[]> {
   const files: string[] = [];
 
@@ -121,14 +123,17 @@ async function findHtmlFiles(
           continue;
         }
         // Recurse into subdirectories
-        const subFiles = await findHtmlFiles(fullPath, exclude);
+        const subFiles = await findHtmlFiles(fullPath, exclude, errors);
         files.push(...subFiles);
       } else if (entry.isFile() && entry.name.endsWith('.html')) {
         files.push(fullPath);
       }
     }
   } catch (err) {
-    // Skip directories we can't read
+    errors.push({
+      file: dir,
+      message: err instanceof Error ? err.message : 'Failed to read directory',
+    });
   }
 
   return files;

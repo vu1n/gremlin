@@ -7,119 +7,67 @@
  * - Performance metrics capture
  */
 
-// ============================================================================
-// Session
-// ============================================================================
-
-/**
- * A recorded user session.
- */
 export interface GremlinSession {
-  /** Session header (metadata, sent once) */
   header: SessionHeader;
-
-  /** Element dictionary for deduplication */
   elements: ElementInfo[];
-
-  /** Recorded events (delta-encoded) */
+  /** Delta-encoded timestamps */
   events: GremlinEvent[];
-
-  /** Captured screenshots */
   screenshots: Screenshot[];
 
   /** rrweb events for DOM replay (web only) */
   rrwebEvents?: unknown[];
 
-  /** Session-level performance summary */
   performance?: SessionPerformance;
 }
 
 export interface SessionHeader {
-  /** Unique session ID */
   sessionId: string;
-
-  /** Session start time (Unix ms) */
+  /** Unix ms */
   startTime: number;
-
-  /** Session end time (Unix ms) */
+  /** Unix ms */
   endTime?: number;
-
-  /** Device information */
   device: DeviceInfo;
-
-  /** App information */
   app: AppInfo;
-
-  /** Schema version for migrations */
+  /** For forward-compatible migrations */
   schemaVersion: number;
 }
 
 export interface DeviceInfo {
-  /** Platform */
   platform: 'web' | 'ios' | 'android';
-
-  /** OS version */
   osVersion: string;
-
-  /** Device model (e.g., "iPhone 15", "Pixel 8") */
+  /** e.g., "iPhone 15", "Pixel 8" */
   model?: string;
-
-  /** Screen dimensions */
   screen: {
     width: number;
     height: number;
     pixelRatio: number;
   };
-
-  /** User agent (web) */
+  /** Web only */
   userAgent?: string;
-
-  /** Locale */
   locale?: string;
 }
 
 export interface AppInfo {
-  /** App name */
   name: string;
-
-  /** App version */
   version: string;
-
-  /** Build number */
   build?: string;
-
   /** Bundle ID (mobile) or origin (web) */
   identifier: string;
 }
-
-// ============================================================================
-// Elements (Dictionary)
-// ============================================================================
 
 /**
  * Element information for the dictionary.
  * Events reference elements by index to save space.
  */
 export interface ElementInfo {
-  /** Test ID (best for test generation) */
+  /** Best for test generation */
   testId?: string;
-
-  /** Accessibility label */
   accessibilityLabel?: string;
-
-  /** Visible text content */
   text?: string;
-
-  /** Element type */
   type: ElementType;
-
-  /** Bounding rectangle */
   bounds?: Rect;
-
-  /** CSS selector (web only) */
+  /** Web only */
   cssSelector?: string;
-
-  /** Additional attributes */
   attributes?: Record<string, string>;
 }
 
@@ -145,24 +93,12 @@ export interface Rect {
   height: number;
 }
 
-// ============================================================================
-// Events
-// ============================================================================
-
-/**
- * A recorded event with delta-encoded timestamp.
- */
 export interface GremlinEvent {
   /** Delta time from previous event (ms) */
   dt: number;
-
-  /** Event type */
   type: EventTypeEnum;
-
-  /** Event-specific data */
   data: EventData;
-
-  /** Performance sample at event time */
+  /** Sampled at event time */
   perf?: PerformanceSample;
 }
 
@@ -191,225 +127,158 @@ export type EventData =
   | ErrorEvent
   | AppStateEvent;
 
-// ============================================================================
-// Event Types
-// ============================================================================
-
 export interface TapEvent {
   kind: 'tap' | 'double_tap' | 'long_press';
-  /** Coordinates */
   x: number;
   y: number;
-  /** Element index in dictionary (if identified) */
+  /** Index into session.elements dictionary */
   elementIndex?: number;
 }
 
 export interface SwipeEvent {
   kind: 'swipe';
-  /** Start coordinates */
   startX: number;
   startY: number;
-  /** End coordinates */
   endX: number;
   endY: number;
-  /** Duration of swipe (ms) */
+  /** ms */
   duration: number;
-  /** Direction */
   direction: 'up' | 'down' | 'left' | 'right';
 }
 
 export interface ScrollEvent {
   kind: 'scroll';
-  /** Scroll position delta */
   deltaX: number;
   deltaY: number;
-  /** Container element index */
   containerIndex?: number;
-  /** Number of raw scroll events coalesced into this one (for replay hints) */
+  /** Number of raw scroll events coalesced into this one (for replay fidelity) */
   coalesced?: number;
 }
 
 export interface InputEvent {
   kind: 'input';
-  /** Element index */
   elementIndex?: number;
-  /** Input value (may be masked for PII) */
+  /** May be masked for PII */
   value: string;
-  /** Whether value was masked */
   masked: boolean;
-  /** Input type */
   inputType?: 'text' | 'password' | 'email' | 'number' | 'phone';
 }
 
 export interface NavigationEvent {
   kind: 'navigation';
-  /** Navigation type */
   navType: 'push' | 'pop' | 'replace' | 'reset' | 'tab' | 'modal';
-  /** Screen/route name */
   screen: string;
-  /** Previous screen (set by recorder) */
+  /** Set by recorder, not user code */
   fromScreen?: string;
-  /** Route parameters (may be masked) */
+  /** May be masked for PII */
   params?: Record<string, unknown>;
-  /** URL (web) */
+  /** Web only */
   url?: string;
 }
 
 export interface NetworkEvent {
   kind: 'network';
-  /** Request ID for correlation */
+  /** Correlates start/end/error phases of the same request */
   requestId: string;
-  /** HTTP method */
   method: string;
-  /** URL (may be truncated) */
+  /** Query params stripped for privacy */
   url: string;
-  /** Response status */
   status?: number;
-  /** Duration (ms) */
+  /** ms */
   duration?: number;
-  /** Request phase */
   phase: 'start' | 'end' | 'error';
-  /** Error message if failed */
   error?: string;
 }
 
 export interface ScreenCaptureEvent {
   kind: 'screen_capture';
-  /** Screenshot index */
+  /** Index into session.screenshots */
   screenshotIndex: number;
-  /** Trigger reason */
   trigger: 'navigation' | 'interval' | 'error' | 'manual';
 }
 
 export interface ErrorEvent {
   kind: 'error';
-  /** Error message */
   message: string;
-  /** Error stack trace */
   stack?: string;
-  /** Error type */
   errorType: 'js' | 'native' | 'network' | 'render';
-  /** Whether fatal */
   fatal: boolean;
 }
 
 export interface AppStateEvent {
   kind: 'app_state';
-  /** New state */
   state: 'active' | 'background' | 'inactive';
 }
 
-// ============================================================================
-// Performance
-// ============================================================================
-
 export interface PerformanceSample {
-  /** Frames per second */
   fps?: number;
-
-  /** JS thread blocked time (ms) */
+  /** ms */
   jsThreadLag?: number;
-
-  /** Memory usage (MB) */
+  /** MB */
   memoryUsage?: number;
-
-  /** Time since last navigation (ms) */
+  /** ms since last navigation */
   timeSinceNavigation?: number;
-
-  /** Long tasks since last sample */
+  /** Since last sample */
   longTaskCount?: number;
-
-  /** Total duration of long tasks since last sample (ms) */
+  /** ms, since last sample */
   longTaskTotalDuration?: number;
 }
 
 /**
- * Web Vitals - session-scoped performance metrics (one per page load).
+ * Web Vitals - session-scoped, one snapshot per page load.
  */
 export interface WebVitals {
-  /** Largest Contentful Paint (ms) */
+  /** ms */
   lcp?: number;
-
-  /** Cumulative Layout Shift */
   cls?: number;
-
-  /** Interaction to Next Paint (ms) */
+  /** ms */
   inp?: number;
-
-  /** First Contentful Paint (ms) */
+  /** ms */
   fcp?: number;
-
-  /** Time to First Byte (ms) */
+  /** ms */
   ttfb?: number;
 }
 
-/**
- * Session-level performance summary.
- */
 export interface SessionPerformance {
-  /** Web Vitals (web only) */
+  /** Web only */
   webVitals?: WebVitals;
-
-  /** Total long tasks in session */
   longTaskCount?: number;
-
-  /** Total duration of all long tasks (ms) */
+  /** ms */
   longTaskTotalDuration?: number;
-
-  /** Average FPS across session */
   avgFps?: number;
-
-  /** Minimum FPS observed */
   minFps?: number;
-
-  /** Peak memory usage (MB) */
+  /** MB */
   peakMemoryUsage?: number;
-
-  /** Page load time (ms) */
+  /** ms */
   pageLoadTime?: number;
 }
 
-// ============================================================================
-// Screenshots
-// ============================================================================
-
 export interface Screenshot {
-  /** Unique ID */
   id: string;
-
-  /** Capture timestamp (Unix ms) */
+  /** Unix ms */
   timestamp: number;
-
-  /** Image format */
   format: 'webp' | 'jpeg' | 'png';
-
-  /** Image data (base64 or URL) */
+  /** Base64 or URL, depending on isUrl */
   data: string;
-
-  /** Whether data is a URL or inline base64 */
   isUrl: boolean;
-
-  /** Image dimensions */
   width: number;
   height: number;
-
-  /** Quality (0-100) */
+  /** 0-100 */
   quality: number;
-
-  /** Whether this is a diff from previous screenshot */
   isDiff: boolean;
-
-  /** Previous screenshot ID if this is a diff */
+  /** Reference for reconstructing full image from diff */
   diffFromId?: string;
 }
 
-// ============================================================================
-// Analytics
-// ============================================================================
-
 /**
- * Session analytics metadata for logging and future dashboard.
+ * Common return type for session upload/transport methods across all recorders.
  */
+export interface UploadResult {
+  success: boolean;
+  sessionId?: string;
+  error?: string;
+}
+
 export interface SessionAnalytics {
   sessionId: string;
   duration: number;
@@ -422,73 +291,6 @@ export interface SessionAnalytics {
   timestamp: Date;
 }
 
-// ============================================================================
-// Factory Functions
-// ============================================================================
-
-export function createSession(
-  device: DeviceInfo,
-  app: AppInfo
-): GremlinSession {
-  return {
-    header: {
-      sessionId: generateSessionId(),
-      startTime: Date.now(),
-      device,
-      app,
-      schemaVersion: 1,
-    },
-    elements: [],
-    events: [],
-    screenshots: [],
-  };
-}
-
-function generateSessionId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = crypto.randomUUID().split('-')[0];
-  return `${timestamp}-${random}`;
-}
-
-/**
- * Get or create element in dictionary, return index.
- */
-export function getOrCreateElement(
-  session: GremlinSession,
-  element: Omit<ElementInfo, 'bounds'>
-): number {
-  // Key-based dedup matching BaseRecorder.getOrCreateElement
-  const key = element.testId || element.accessibilityLabel || element.text;
-
-  if (key) {
-    const existing = session.elements.findIndex(
-      (e) => (e.testId || e.accessibilityLabel || e.text) === key
-    );
-    if (existing !== -1) {
-      return existing;
-    }
-  }
-
-  // Add new element
-  session.elements.push(element as ElementInfo);
-  return session.elements.length - 1;
-}
-
-/**
- * Add event with delta encoding.
- */
-export function addEvent(
-  session: GremlinSession,
-  event: Omit<GremlinEvent, 'dt'>,
-  previousTimestamp: number
-): number {
-  const timestamp = Date.now();
-  const dt = timestamp - previousTimestamp;
-
-  session.events.push({
-    ...event,
-    dt,
-  });
-
-  return timestamp;
-}
+// Runtime helper functions (createSession, generateSessionId, addEvent,
+// getOrCreateElement) have been moved to ./builders.ts to keep this
+// file focused on type contracts.

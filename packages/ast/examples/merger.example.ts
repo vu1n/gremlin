@@ -14,12 +14,19 @@ import { mergeSpecs } from '../src/merger.js';
 import { calculateCoverage, formatCoverageReport } from '../src/coverage.js';
 import { detectCycles, formatCyclesReport } from '../src/cycle-detector.js';
 import type { GremlinSession, DeviceInfo, AppInfo } from '@gremlin/session';
-import { createSession, getOrCreateElement, EventTypeEnum } from '@gremlin/session';
+import { createSession, EventTypeEnum } from '@gremlin/session';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Deterministic delay values to replace Math.random() for reproducible output
+const DT_VALUES = [1500, 1800, 2100, 1200, 1700, 2400, 1900, 1300, 2000, 1600];
+let dtIndex = 0;
+function nextDt(): number {
+  return DT_VALUES[dtIndex++ % DT_VALUES.length];
+}
 
 async function main() {
   console.log('=== Spec Merger Example ===\n');
@@ -27,7 +34,7 @@ async function main() {
   // 1. Extract routes from Expo app
   console.log('1. Extracting routes from Expo app...');
   const expoAppDir = path.resolve(__dirname, '../../../examples/expo-app');
-  const routeResult = extractExpoRoutes({ rootDir: expoAppDir });
+  const routeResult = await extractExpoRoutes({ rootDir: expoAppDir });
 
   console.log(`   Found ${routeResult.routes.length} routes\n`);
 
@@ -177,7 +184,7 @@ function createSessionWithFlow(
   for (const screen of screens) {
     // Add navigation event
     session.events.push({
-      dt: 1000 + Math.random() * 2000, // Random delay between 1-3 seconds
+      dt: nextDt(),
       type: EventTypeEnum.NAVIGATION,
       data: {
         kind: 'navigation',
@@ -211,7 +218,7 @@ function createSessionWithErrors(
 
     // Add navigation event
     session.events.push({
-      dt: 1000 + Math.random() * 2000,
+      dt: nextDt(),
       type: EventTypeEnum.NAVIGATION,
       data: {
         kind: 'navigation',

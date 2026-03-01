@@ -5,13 +5,10 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { GremlinSession, SessionPerformance } from '@gremlin/session';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import type { SessionSummary as ServerSessionSummary } from '@gremlin/server-shared';
+import { output, type OutputOptions } from '../output.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface SessionsOptions extends OutputOptions {
+interface SessionsOptions extends OutputOptions {
   /** Input directory for sessions */
   input?: string;
 
@@ -34,34 +31,26 @@ export interface SessionsOptions extends OutputOptions {
   slow?: boolean;
 }
 
-export interface SessionSummary {
-  id: string;
-  appName: string;
-  platform: string;
-  eventCount: number;
-  startTime: number;
-  performance?: SessionPerformance;
-}
+/**
+ * CLI-local subset of the canonical SessionSummary from @gremlin/server-shared.
+ * Only the fields needed for local session listing.
+ */
+type SessionSummary = Pick<
+  ServerSessionSummary,
+  'id' | 'appName' | 'platform' | 'eventCount' | 'startTime' | 'performance'
+>;
 
-export interface SessionsResult {
+interface SessionsResult {
   sessions: SessionSummary[];
   total: number;
   directory: string;
 }
-
-// ============================================================================
-// Core Web Vitals thresholds (Google "Poor" boundary)
-// ============================================================================
 
 const CWV_THRESHOLDS = {
   lcp: 2500,
   cls: 0.25,
   inp: 200,
 };
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function getPerfSortValue(s: SessionSummary, metric: string): number {
   const p = s.performance;
@@ -101,11 +90,7 @@ function formatPerfLine(p: SessionPerformance | undefined): string {
   return parts.length > 0 ? parts.join(' | ') : 'no perf data';
 }
 
-// ============================================================================
-// Command
-// ============================================================================
-
-export async function listSessions(options: SessionsOptions): Promise<SessionsResult> {
+export function listSessions(options: SessionsOptions): SessionsResult {
   const input = options.input ?? '.gremlin/sessions';
   const limit = options.limit ?? 20;
 

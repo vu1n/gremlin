@@ -2,10 +2,6 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { EventTypeEnum } from '@gremlin/session';
 import type { NetworkEvent } from '@gremlin/session';
 
-// ============================================================================
-// Mock rrweb before importing recorder
-// ============================================================================
-
 // We must mock rrweb since it requires a real DOM
 mock.module('rrweb', () => ({
   record: () => () => {}, // returns a stop function
@@ -20,11 +16,7 @@ mock.module('web-vitals', () => ({
   onTTFB: () => {},
 }));
 
-import { GremlinRecorder, type RecorderConfig } from './recorder';
-
-// ============================================================================
-// Browser Global Mocks
-// ============================================================================
+import { GremlinRecorder, type RecorderConfig } from './recorder.ts';
 
 // Save originals
 const origFetch = globalThis.fetch;
@@ -35,7 +27,6 @@ const origNavigator = globalThis.navigator;
 const origHistory = globalThis.history;
 const origScreen = (globalThis as any).screen;
 const origSessionStorage = globalThis.sessionStorage;
-const origPerformance = globalThis.performance;
 const origRAF = globalThis.requestAnimationFrame;
 const origCAF = globalThis.cancelAnimationFrame;
 const origSetInterval = globalThis.setInterval;
@@ -113,8 +104,8 @@ function installBrowserGlobals() {
   const winTarget = createMockEventTarget();
 
   // Mock fetch that resolves immediately
-  let mockFetchImpl = async (input: any, init?: any): Promise<Response> => {
-    return new Response('ok', { status: 200 });
+  let mockFetchImpl = (input: any, init?: any): Promise<Response> => {
+    return Promise.resolve(new Response('ok', { status: 200 }));
   };
 
   const mockFetch: any = (input: any, init?: any) => mockFetchImpl(input, init);
@@ -133,6 +124,8 @@ function installBrowserGlobals() {
   };
 
   // Mock window
+  // Use a getter/setter for fetch so window.fetch mirrors globalThis.fetch,
+  // matching real browser behavior where window === globalThis.
   const mockWindow: any = {
     ...winTarget,
     location: {
@@ -140,7 +133,6 @@ function installBrowserGlobals() {
       href: 'https://myapp.com/page',
       pathname: '/page',
     },
-    fetch: mockFetch,
     screen: { width: 1920, height: 1080 },
     devicePixelRatio: 2,
     scrollY: 0,
@@ -148,6 +140,12 @@ function installBrowserGlobals() {
     setInterval: origSetInterval,
     clearInterval: origClearInterval,
   };
+  Object.defineProperty(mockWindow, 'fetch', {
+    get() { return globalThis.fetch; },
+    set(v) { globalThis.fetch = v; },
+    configurable: true,
+    enumerable: true,
+  });
 
   // Mock navigator
   const mockNavigator: any = {
@@ -195,7 +193,7 @@ function installBrowserGlobals() {
   (globalThis as any).cancelAnimationFrame = () => {};
 
   // Also set on window object so recorder accesses work
-  mockWindow.fetch = mockFetch;
+  // (fetch is handled by the getter/setter above, which mirrors globalThis.fetch)
   mockWindow.XMLHttpRequest = MockXMLHttpRequest;
 
   // CSS.escape used by element-capture
@@ -227,10 +225,6 @@ function restoreBrowserGlobals() {
   (globalThis as any).PerformanceObserver = origPerfObserver;
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 function createRecorder(overrides: Partial<RecorderConfig> = {}): GremlinRecorder {
   return new GremlinRecorder({
     appName: 'TestApp',
@@ -251,10 +245,6 @@ function getNetworkEvents(recorder: GremlinRecorder): NetworkEvent[] {
     .filter((e) => e.type === EventTypeEnum.NETWORK)
     .map((e) => e.data as NetworkEvent);
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 describe('GremlinRecorder Network Interception', () => {
   let env: ReturnType<typeof installBrowserGlobals>;

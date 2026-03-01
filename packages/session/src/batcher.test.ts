@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { EventBatcher } from './batcher';
-import type { GremlinEvent } from './types';
-import { EventTypeEnum } from './types';
+import { EventBatcher } from './batcher.ts';
+import type { GremlinEvent } from './types.ts';
+import { EventTypeEnum } from './types.ts';
 
 describe('EventBatcher', () => {
   let emitted: Omit<GremlinEvent, 'dt'>[];

@@ -4,18 +4,19 @@ import { mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { GremlinSession } from '@gremlin/session';
-import type { ServerConfig, SessionIndexEntry } from './types';
-import { validateSession, createSessionSummary } from './types';
+import type { ServerConfig } from './types.ts';
+import { validateSession, createSessionSummary } from './types.ts';
 import {
   storeSession,
   getSession,
   listSessions,
   deleteSession,
   getSessionMetadata,
+  appendSessionEvents,
   listSessionsWithPerf,
   getPerformanceAggregation,
   getSessionPerformance,
-} from './storage';
+} from './storage.ts';
 import { parsePerfQueryParams } from '@gremlin/server-shared';
 
 function makeConfig(dataDir: string): ServerConfig {
@@ -304,6 +305,53 @@ describe('getSessionMetadata', () => {
 });
 
 // ============================================================================
+// appendSessionEvents
+// ============================================================================
+
+describe('appendSessionEvents', () => {
+  it('appends events to an existing session', async () => {
+    const session = makeSession();
+    session.header.sessionId = 'append-test';
+    await storeSession(config, session);
+
+    const newEvents = [
+      { dt: 200, type: 0, data: { kind: 'tap' as const, x: 50, y: 60 } },
+      { dt: 300, type: 0, data: { kind: 'tap' as const, x: 70, y: 80 } },
+    ];
+
+    const result = await appendSessionEvents(config, 'append-test', newEvents);
+    expect(result).toBe(true);
+
+    const updated = await getSession(config, 'append-test');
+    expect(updated).not.toBeNull();
+    expect(updated!.events.length).toBe(3); // 1 original + 2 appended
+  });
+
+  it('returns false for missing session', async () => {
+    const result = await appendSessionEvents(config, 'nonexistent', [
+      { dt: 100, type: 0, data: { kind: 'tap' as const, x: 0, y: 0 } },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it('updates index with new event count', async () => {
+    const session = makeSession();
+    session.header.sessionId = 'index-update-test';
+    await storeSession(config, session);
+
+    const newEvents = [
+      { dt: 200, type: 0, data: { kind: 'tap' as const, x: 50, y: 60 } },
+    ];
+
+    await appendSessionEvents(config, 'index-update-test', newEvents);
+
+    const meta = await getSessionMetadata(config, 'index-update-test');
+    expect(meta).not.toBeNull();
+    expect(meta!.eventCount).toBe(2); // 1 original + 1 appended
+  });
+});
+
+// ============================================================================
 // validateSession
 // ============================================================================
 
@@ -318,13 +366,13 @@ describe('validateSession', () => {
   it('rejects non-object input', () => {
     const result = validateSession(null);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Session must be an object');
+    expect(result.errors).toContain('root: Expected object, received null');
   });
 
   it('rejects missing header', () => {
     const result = validateSession({ elements: [], events: [], screenshots: [] });
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header');
+    expect(result.errors).toContain('header: Required');
   });
 
   it('rejects missing header.sessionId', () => {
@@ -332,7 +380,7 @@ describe('validateSession', () => {
     (session.header as any).sessionId = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header.sessionId');
+    expect(result.errors).toContain('header.sessionId: Required');
   });
 
   it('rejects missing header.startTime', () => {
@@ -340,7 +388,7 @@ describe('validateSession', () => {
     (session.header as any).startTime = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header.startTime');
+    expect(result.errors).toContain('header.startTime: Required');
   });
 
   it('rejects missing header.device', () => {
@@ -348,7 +396,7 @@ describe('validateSession', () => {
     (session.header as any).device = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header.device');
+    expect(result.errors).toContain('header.device: Required');
   });
 
   it('rejects missing header.app', () => {
@@ -356,7 +404,7 @@ describe('validateSession', () => {
     (session.header as any).app = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header.app');
+    expect(result.errors).toContain('header.app: Required');
   });
 
   it('rejects missing header.schemaVersion', () => {
@@ -364,7 +412,7 @@ describe('validateSession', () => {
     (session.header as any).schemaVersion = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid header.schemaVersion');
+    expect(result.errors).toContain('header.schemaVersion: Required');
   });
 
   it('rejects missing elements array', () => {
@@ -372,7 +420,7 @@ describe('validateSession', () => {
     (session as any).elements = 'not-array';
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid elements array');
+    expect(result.errors).toContain('elements: Expected array, received string');
   });
 
   it('rejects missing events array', () => {
@@ -380,7 +428,7 @@ describe('validateSession', () => {
     (session as any).events = null;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid events array');
+    expect(result.errors).toContain('events: Expected array, received null');
   });
 
   it('rejects missing screenshots array', () => {
@@ -388,7 +436,7 @@ describe('validateSession', () => {
     (session as any).screenshots = undefined;
     const result = validateSession(session);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing or invalid screenshots array');
+    expect(result.errors).toContain('screenshots: Required');
   });
 
   it('reports multiple errors at once', () => {
@@ -447,40 +495,54 @@ describe('createSessionSummary', () => {
 
 describe('parsePerfQueryParams', () => {
   it('parses sort and order', () => {
-    const opts = parsePerfQueryParams({ sort: 'lcp', order: 'asc' });
-    expect(opts.sort).toBe('lcp');
-    expect(opts.order).toBe('asc');
+    const result = parsePerfQueryParams({ sort: 'lcp', order: 'asc' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.sort).toBe('lcp');
+    expect(result.params.order).toBe('asc');
   });
 
   it('parses limit and cursor', () => {
-    const opts = parsePerfQueryParams({ limit: '10', cursor: 'abc' });
-    expect(opts.limit).toBe(10);
-    expect(opts.cursor).toBe('abc');
+    const result = parsePerfQueryParams({ limit: '10', cursor: 'abc' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.limit).toBe(10);
+    expect(result.params.cursor).toBe('abc');
   });
 
   it('clamps limit to 100', () => {
-    const opts = parsePerfQueryParams({ limit: '500' });
-    expect(opts.limit).toBe(100);
+    const result = parsePerfQueryParams({ limit: '500' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.limit).toBe(100);
   });
 
   it('ignores invalid sort keys', () => {
-    const opts = parsePerfQueryParams({ sort: 'invalid_key' });
-    expect(opts.sort).toBeUndefined();
+    const result = parsePerfQueryParams({ sort: 'invalid_key' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.sort).toBeUndefined();
   });
 
   it('parses threshold filters', () => {
-    const opts = parsePerfQueryParams({ lcp_gt: '2500', cls_lt: '0.1' });
-    expect(opts.filters).toBeDefined();
-    expect(opts.filters!.length).toBe(2);
-    expect(opts.filters!.find((f) => f.key === 'lcp')?.op).toBe('gt');
-    expect(opts.filters!.find((f) => f.key === 'lcp')?.value).toBe(2500);
-    expect(opts.filters!.find((f) => f.key === 'cls')?.op).toBe('lt');
-    expect(opts.filters!.find((f) => f.key === 'cls')?.value).toBe(0.1);
+    const result = parsePerfQueryParams({ lcp_gt: '2500', cls_lt: '0.1' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.params.filters).toBeDefined();
+    expect(result.params.filters!.length).toBe(2);
+    expect(result.params.filters!.find((f) => f.key === 'lcp')?.op).toBe('gt');
+    expect(result.params.filters!.find((f) => f.key === 'lcp')?.value).toBe(2500);
+    expect(result.params.filters!.find((f) => f.key === 'cls')?.op).toBe('lt');
+    expect(result.params.filters!.find((f) => f.key === 'cls')?.value).toBe(0.1);
   });
 
   it('ignores NaN filter values', () => {
-    const opts = parsePerfQueryParams({ lcp_gt: 'not-a-number' });
-    expect(opts.filters).toBeUndefined();
+    const result = parsePerfQueryParams({ lcp_gt: 'not-a-number' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.params.filters).toBeUndefined();
+  });
+
+  it('rejects invalid limit consistently', () => {
+    const result = parsePerfQueryParams({ limit: 'abc' });
+    expect(result.ok).toBe(false);
   });
 });
 

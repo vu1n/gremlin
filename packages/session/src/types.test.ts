@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import {
-  createSession,
-  getOrCreateElement,
-  addEvent,
-  EventTypeEnum,
-} from './types';
-import type { DeviceInfo, AppInfo, GremlinSession } from './types';
+import { EventTypeEnum } from './types.ts';
+import { createSession, getOrCreateElement, addEvent } from './builders.ts';
+import type { DeviceInfo, AppInfo, GremlinSession } from './types.ts';
 
 const mockDevice: DeviceInfo = {
   platform: 'web',

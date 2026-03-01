@@ -13,14 +13,10 @@ import {
   getFrameworkInfo,
   getInitCode,
   type Framework,
-} from '../detect.ts';
-import { output, outputError, type OutputOptions } from '../output.ts';
+} from './shared/detect.ts';
+import { output, type OutputOptions } from '../output.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface InstrumentOptions extends OutputOptions {
+interface InstrumentOptions extends OutputOptions {
   /** Force a specific framework detection */
   framework?: string;
 
@@ -28,7 +24,7 @@ export interface InstrumentOptions extends OutputOptions {
   format?: 'prompt' | 'llms';
 }
 
-export interface InstrumentResult {
+interface InstrumentResult {
   framework: Framework;
   frameworkDisplay: string;
   content: string;
@@ -38,11 +34,7 @@ export interface InstrumentResult {
   format: 'prompt' | 'llms';
 }
 
-// ============================================================================
-// Main Command
-// ============================================================================
-
-export async function instrument(options: InstrumentOptions): Promise<InstrumentResult> {
+export function instrument(options: InstrumentOptions): InstrumentResult {
   const framework = options.framework
     ? (options.framework as Framework)
     : detectFramework();
@@ -96,10 +88,6 @@ export async function instrument(options: InstrumentOptions): Promise<Instrument
   return result;
 }
 
-// ============================================================================
-// Prompt Generation
-// ============================================================================
-
 function generatePrompt(framework: Framework): string {
   const info = getFrameworkInfo(framework);
   const initCode = getInitCode(framework);
@@ -141,10 +129,6 @@ IMPORTANT:
 - Use data-testid attributes for elements that need reliable test generation
 `;
 }
-
-// ============================================================================
-// llms.txt Generation
-// ============================================================================
 
 function generateLlmsTxt(framework: Framework): string {
   const info = getFrameworkInfo(framework);

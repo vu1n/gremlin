@@ -34,7 +34,7 @@ const sessionRoutes: SessionRoute[] = [
 
 // Extract routes from codebase
 const expoAppPath = resolve(__dirname, '../../examples/expo-app');
-const extractionResult = extractExpoRoutes({
+const extractionResult = await extractExpoRoutes({
   rootDir: expoAppPath,
   includeLayouts: false // Exclude layouts from coverage analysis
 });

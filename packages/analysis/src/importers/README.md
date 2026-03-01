@@ -59,16 +59,12 @@ const session = importRrwebRecording(events, {
 const jsonContent = await Bun.file('recording.json').text();
 const session2 = parseRrwebFile(jsonContent, options);
 
-// Use importer instance for multiple recordings
-import { createRrwebImporter } from '@gremlin/core';
-
-const importer = createRrwebImporter({
+// Import multiple recordings with shared options
+const recordings = [events1, events2, events3];
+const sessions = recordings.map((r) => importRrwebRecording(r, {
   app: { name: 'MyApp', version: '1.0.0' },
   maskInputs: true,
-});
-
-const recordings = [events1, events2, events3];
-const sessions = recordings.map((r) => importer.importRecording(r));
+}));
 ```
 
 **Supported Event Types:**

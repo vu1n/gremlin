@@ -1,244 +1,66 @@
 /**
  * Error Regression Test Generator
  *
- * Extracts error flows from sessions and generates Playwright tests:
+ * Generates Playwright tests from extracted error patterns:
  * - Regression tests that replay flows and assert errors no longer occur
  * - Network error recovery tests that mock failures and verify handling
+ *
+ * Code generation is separated from file persistence:
+ * - `planErrorTests()` returns test source strings without touching disk
+ * - `writeErrorTests()` persists planned tests to the filesystem
+ * - `generateErrorTests()` does both (backward-compatible convenience function)
+ *
+ * Pattern extraction logic lives in error-pattern-extractor.ts.
  */
 
 import { mkdirSync, writeFileSync as fsWriteFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type {
-  GremlinSession,
-  GremlinEvent,
-  ElementInfo,
-  ErrorEvent,
-  NavigationEvent,
-  NetworkEvent,
-  TapEvent,
-  InputEvent,
-  ScrollEvent,
-} from '@gremlin/session';
-import { EventTypeEnum } from '@gremlin/session';
+import { escapeString } from './utils.ts';
+import {
+  extractErrorPatterns,
+  extractMatchFragment,
+  normalizeMessage,
+  resolveLocatorString,
+  extractNetworkUrl,
+} from './error-pattern-extractor.ts';
+import type { FlowStep, ErrorPattern } from './error-pattern-extractor.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface FlowStep {
-  action: 'navigate' | 'click' | 'fill' | 'scroll' | 'wait';
-  target?: string;
-  value?: string;
-  description: string;
-}
-
-export interface ErrorPattern {
-  fingerprint: string;
-  message: string;
-  errorType: 'js' | 'native' | 'network' | 'render';
-  fatal: boolean;
-  stack?: string;
-  occurrences: number;
-  sessionIds: string[];
-  flow: FlowStep[];
-}
+// Re-export types and functions so existing consumers keep working
+export type { FlowStep, ErrorPattern } from './error-pattern-extractor.ts';
+export { extractErrorPatterns } from './error-pattern-extractor.ts';
+export { computeFingerprint, normalizeMessage } from './error-pattern-extractor.ts';
 
 export interface ErrorTestGeneratorOptions {
-  sessions: GremlinSession[];
+  sessions: import('@gremlin/session').GremlinSession[];
   baseUrl?: string;
   outputDir?: string;
   minOccurrences?: number;
 }
 
+export interface ErrorTestEntry {
+  patternFingerprint: string;
+  name: string;
+  path: string;
+  type: 'regression' | 'network-recovery';
+  /** Generated Playwright test source code */
+  source: string;
+}
+
 export interface ErrorTestResult {
   patterns: ErrorPattern[];
-  tests: Array<{
-    patternFingerprint: string;
-    name: string;
-    path: string;
-    type: 'regression' | 'network-recovery';
-  }>;
+  tests: ErrorTestEntry[];
   outputDir: string;
 }
 
 // ============================================================================
-// Error Pattern Extraction
+// Planning (pure — no filesystem I/O)
 // ============================================================================
 
-export function extractErrorPatterns(
-  sessions: GremlinSession[]
-): ErrorPattern[] {
-  const patternMap = new Map<
-    string,
-    {
-      message: string;
-      errorType: ErrorEvent['errorType'];
-      fatal: boolean;
-      stack?: string;
-      sessionIds: string[];
-      flows: FlowStep[][];
-    }
-  >();
-
-  for (const session of sessions) {
-    const sessionId = session.header.sessionId;
-
-    for (let i = 0; i < session.events.length; i++) {
-      const event = session.events[i];
-      if (event.type !== EventTypeEnum.ERROR) continue;
-
-      const errorData = event.data as ErrorEvent;
-      const fingerprint = computeFingerprint(
-        errorData.message,
-        errorData.errorType
-      );
-      const flow = extractFlowToError(session, i);
-
-      const existing = patternMap.get(fingerprint);
-      if (existing) {
-        existing.sessionIds.push(sessionId);
-        existing.flows.push(flow);
-        if (!existing.stack && errorData.stack) {
-          existing.stack = errorData.stack;
-        }
-        if (errorData.fatal) {
-          existing.fatal = true;
-        }
-      } else {
-        patternMap.set(fingerprint, {
-          message: errorData.message,
-          errorType: errorData.errorType,
-          fatal: errorData.fatal,
-          stack: errorData.stack,
-          sessionIds: [sessionId],
-          flows: [flow],
-        });
-      }
-    }
-  }
-
-  const patterns: ErrorPattern[] = [];
-  for (const [fingerprint, data] of patternMap) {
-    // Pick the longest flow as the most representative
-    const bestFlow = data.flows.reduce((best, current) =>
-      current.length > best.length ? current : best
-    );
-
-    patterns.push({
-      fingerprint,
-      message: data.message,
-      errorType: data.errorType,
-      fatal: data.fatal,
-      stack: data.stack,
-      occurrences: data.sessionIds.length,
-      sessionIds: [...new Set(data.sessionIds)],
-      flow: bestFlow,
-    });
-  }
-
-  // Sort by occurrences descending, then fatal first
-  patterns.sort((a, b) => {
-    if (a.fatal !== b.fatal) return a.fatal ? -1 : 1;
-    return b.occurrences - a.occurrences;
-  });
-
-  return patterns;
-}
-
-// ============================================================================
-// Flow Extraction
-// ============================================================================
-
-function extractFlowToError(
-  session: GremlinSession,
-  errorIndex: number
-): FlowStep[] {
-  // Walk backwards from the error to find the last navigation (or start)
-  let startIndex = 0;
-  for (let i = errorIndex - 1; i >= 0; i--) {
-    if (session.events[i].type === EventTypeEnum.NAVIGATION) {
-      startIndex = i;
-      break;
-    }
-  }
-
-  const steps: FlowStep[] = [];
-
-  for (let i = startIndex; i < errorIndex; i++) {
-    const event = session.events[i];
-    const step = eventToFlowStep(event, session.elements);
-    if (step) {
-      steps.push(step);
-    }
-  }
-
-  return steps;
-}
-
-function eventToFlowStep(
-  event: GremlinEvent,
-  elements: ElementInfo[]
-): FlowStep | null {
-  switch (event.type) {
-    case EventTypeEnum.NAVIGATION: {
-      const nav = event.data as NavigationEvent;
-      return {
-        action: 'navigate',
-        target: nav.url || nav.screen,
-        description: `Navigate to ${nav.screen}${nav.url ? ` (${nav.url})` : ''}`,
-      };
-    }
-
-    case EventTypeEnum.TAP:
-    case EventTypeEnum.DOUBLE_TAP: {
-      const tap = event.data as TapEvent;
-      const element =
-        tap.elementIndex !== undefined
-          ? elements[tap.elementIndex]
-          : undefined;
-      const locatorDesc = element
-        ? describeElement(element)
-        : `(${tap.x}, ${tap.y})`;
-      return {
-        action: 'click',
-        target: resolveLocatorString(element),
-        description: `Click ${locatorDesc}`,
-      };
-    }
-
-    case EventTypeEnum.INPUT: {
-      const input = event.data as InputEvent;
-      const element =
-        input.elementIndex !== undefined
-          ? elements[input.elementIndex]
-          : undefined;
-      return {
-        action: 'fill',
-        target: resolveLocatorString(element),
-        value: input.masked ? 'test input' : input.value,
-        description: `Fill ${describeElement(element)} with "${input.masked ? '***' : input.value}"`,
-      };
-    }
-
-    case EventTypeEnum.SCROLL: {
-      const scroll = event.data as ScrollEvent;
-      return {
-        action: 'scroll',
-        description: `Scroll (${scroll.deltaX}, ${scroll.deltaY})`,
-        value: String(scroll.deltaY),
-      };
-    }
-
-    default:
-      return null;
-  }
-}
-
-// ============================================================================
-// Main Generator
-// ============================================================================
-
-export function generateErrorTests(
+/**
+ * Plan error regression tests: extract patterns, generate source code strings,
+ * and compute output paths — without writing anything to disk.
+ */
+export function planErrorTests(
   options: ErrorTestGeneratorOptions
 ): ErrorTestResult {
   const {
@@ -267,13 +89,13 @@ export function generateErrorTests(
     // Regression test
     const regressionCode = generateRegressionTest(pattern, baseUrl);
     const regressionPath = `${outputDir}/${slug}.spec.ts`;
-    writeFile(regressionPath, regressionCode);
 
     result.tests.push({
       patternFingerprint: pattern.fingerprint,
       name: `regression: ${truncate(pattern.message, 60)}`,
       path: regressionPath,
       type: 'regression',
+      source: regressionCode,
     });
 
     // Network recovery test (only for network errors)
@@ -286,18 +108,47 @@ export function generateErrorTests(
           baseUrl
         );
         const recoveryPath = `${outputDir}/${slug}.recovery.spec.ts`;
-        writeFile(recoveryPath, recoveryCode);
 
         result.tests.push({
           patternFingerprint: pattern.fingerprint,
           name: `network recovery: ${truncate(pattern.message, 50)}`,
           path: recoveryPath,
           type: 'network-recovery',
+          source: recoveryCode,
         });
       }
     }
   }
 
+  return result;
+}
+
+// ============================================================================
+// File Persistence
+// ============================================================================
+
+/**
+ * Write planned error tests to disk.
+ */
+export function writeErrorTests(result: ErrorTestResult): void {
+  for (const test of result.tests) {
+    writeFile(test.path, test.source);
+  }
+}
+
+// ============================================================================
+// Backward-Compatible Convenience Function
+// ============================================================================
+
+/**
+ * Generate error tests and write them to disk.
+ * Equivalent to calling `planErrorTests()` then `writeErrorTests()`.
+ */
+export function generateErrorTests(
+  options: ErrorTestGeneratorOptions
+): ErrorTestResult {
+  const result = planErrorTests(options);
+  writeErrorTests(result);
   return result;
 }
 
@@ -444,112 +295,8 @@ function emitFlowSteps(
 }
 
 // ============================================================================
-// Fingerprinting & Normalization
+// URL Pattern
 // ============================================================================
-
-export function computeFingerprint(message: string, errorType: string): string {
-  const normalized = normalizeMessage(message);
-  return `${errorType}:${normalized}`;
-}
-
-export function normalizeMessage(message: string): string {
-  return (
-    message
-      // Strip UUIDs
-      .replace(
-        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-        '<id>'
-      )
-      // Strip numeric IDs (standalone numbers)
-      .replace(/\b\d{4,}\b/g, '<id>')
-      // Strip timestamps (ISO format)
-      .replace(
-        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\s]*/g,
-        '<timestamp>'
-      )
-      // Strip line:column references
-      .replace(/:\d+:\d+/g, ':<line>:<col>')
-      // Strip hex addresses
-      .replace(/0x[0-9a-f]+/gi, '<addr>')
-      // Collapse whitespace
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
-}
-
-function extractMatchFragment(normalizedMessage: string): string {
-  // Extract the most stable portion of the message for matching
-  // Take up to the first placeholder or 60 chars
-  const placeholderIdx = normalizedMessage.indexOf('<');
-  if (placeholderIdx > 10) {
-    return normalizedMessage.substring(0, placeholderIdx).trim();
-  }
-  // Fall back to first 60 chars
-  return normalizedMessage.substring(0, 60).trim();
-}
-
-// ============================================================================
-// Locator Resolution
-// ============================================================================
-
-function resolveLocatorString(element?: ElementInfo): string {
-  if (!element) return "page.locator('body')";
-
-  if (element.testId) {
-    return `page.locator('[data-testid="${element.testId}"]')`;
-  }
-
-  if (element.accessibilityLabel) {
-    return `page.getByLabel('${escapeString(element.accessibilityLabel)}')`;
-  }
-
-  if (element.text) {
-    if (element.type === 'button') {
-      return `page.getByRole('button', { name: '${escapeString(element.text)}' })`;
-    }
-    if (element.type === 'link') {
-      return `page.getByRole('link', { name: '${escapeString(element.text)}' })`;
-    }
-    return `page.getByText('${escapeString(element.text)}')`;
-  }
-
-  if (element.cssSelector) {
-    return `page.locator('${escapeString(element.cssSelector)}')`;
-  }
-
-  return "page.locator('body')";
-}
-
-function describeElement(element?: ElementInfo): string {
-  if (!element) return 'unknown element';
-  if (element.testId) return `[data-testid="${element.testId}"]`;
-  if (element.accessibilityLabel) return `"${element.accessibilityLabel}"`;
-  if (element.text) return `"${element.text}"`;
-  if (element.cssSelector) return element.cssSelector;
-  return 'unknown element';
-}
-
-// ============================================================================
-// Network URL Extraction
-// ============================================================================
-
-function extractNetworkUrl(pattern: ErrorPattern): string | null {
-  // Try to extract URL from the error message (common patterns)
-  const urlMatch = pattern.message.match(
-    /(?:https?:\/\/[^\s"']+|\/api\/[^\s"']+)/
-  );
-  if (urlMatch) return urlMatch[0];
-
-  // Check the stack trace
-  if (pattern.stack) {
-    const stackUrlMatch = pattern.stack.match(
-      /(?:https?:\/\/[^\s"')]+|\/api\/[^\s"')]+)/
-    );
-    if (stackUrlMatch) return stackUrlMatch[0];
-  }
-
-  return null;
-}
 
 function urlToRoutePattern(url: string): string {
   try {
@@ -576,15 +323,6 @@ function writeFile(path: string, content: string): void {
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function escapeString(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/`/g, '\\`')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r');
-}
 
 function slugify(str: string): string {
   return str

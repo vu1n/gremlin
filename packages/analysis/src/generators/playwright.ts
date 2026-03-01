@@ -9,16 +9,17 @@ import type {
   GremlinSpec,
   State,
   Transition,
-  TransitionEvent,
   ElementRef,
   Predicate,
   StateId,
-} from '../spec/types';
-import { extractFlows, getStateName, type Flow } from './flows';
+} from '../spec/types.ts';
+import { extractFlows, type Flow } from './flows.ts';
+import { escapeString } from './utils.ts';
+import {
+  generateLocator,
+  generateEventAction,
+} from './playwright-helpers.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface PlaywrightGeneratorOptions {
   /** Base URL for the app */
@@ -46,9 +47,6 @@ export interface GeneratedTest {
   transitions: string[];
 }
 
-// ============================================================================
-// Main Generator
-// ============================================================================
 
 export function generatePlaywrightTests(
   spec: GremlinSpec,
@@ -110,9 +108,6 @@ export function generatePlaywrightTests(
   return lines.join('\n');
 }
 
-// ============================================================================
-// Test Generation
-// ============================================================================
 
 interface TestGenOptions {
   includeComments: boolean;
@@ -229,116 +224,6 @@ function generateTransitionTest(
   return lines.join('\n');
 }
 
-// ============================================================================
-// Code Generation Helpers
-// ============================================================================
-
-function generateEventAction(event: TransitionEvent): string {
-  const element = event.element;
-
-  switch (event.type) {
-    case 'tap':
-      return generateClickAction(element);
-
-    case 'double_tap':
-      return generateDblClickAction(element);
-
-    case 'input':
-      return generateInputAction(element, event.data);
-
-    case 'submit':
-      return generateSubmitAction(element);
-
-    case 'scroll':
-      return generateScrollAction(event.data);
-
-    case 'navigation':
-      return generateNavigationAction(event.data);
-
-    case 'back':
-      return `await page.goBack();`;
-
-    default:
-      return `// TODO: Handle ${event.type} event`;
-  }
-}
-
-function generateClickAction(element?: ElementRef): string {
-  const locator = generateLocator(element);
-  return `await ${locator}.click();`;
-}
-
-function generateDblClickAction(element?: ElementRef): string {
-  const locator = generateLocator(element);
-  return `await ${locator}.dblclick();`;
-}
-
-function generateInputAction(element?: ElementRef, data?: Record<string, unknown>): string {
-  const locator = generateLocator(element);
-  const value = typeof data?.value === 'string' ? data.value : 'test input';
-  return `await ${locator}.fill('${escapeString(value)}');`;
-}
-
-function generateSubmitAction(element?: ElementRef): string {
-  if (element) {
-    const locator = generateLocator(element);
-    return `await ${locator}.press('Enter');`;
-  }
-  return `await page.keyboard.press('Enter');`;
-}
-
-function generateScrollAction(data?: Record<string, unknown>): string {
-  const deltaY = typeof data?.deltaY === 'number' ? data.deltaY : 500;
-  return `await page.mouse.wheel(0, ${deltaY});`;
-}
-
-function generateNavigationAction(data?: Record<string, unknown>): string {
-  if (typeof data?.url === 'string') {
-    return `await page.goto('${escapeString(data.url)}');`;
-  }
-  return `// Navigation to ${data?.screen || 'unknown'}`;
-}
-
-function generateLocator(element?: ElementRef): string {
-  if (!element) {
-    return `page.locator('body')`;
-  }
-
-  // Priority order for selectors
-  if (element.testId) {
-    // Handle wildcard testIDs (e.g., "product-card-*") by using regex or first match
-    if (element.testId.includes('*')) {
-      const pattern = element.testId.replace(/\*/g, '.*');
-      return `page.locator('[data-testid]').filter({ has: page.locator(\`[data-testid*="${element.testId.replace(/\*/g, '')}"\`) }).first()`;
-    }
-    return `page.getByTestId('${element.testId}')`;
-  }
-
-  if (element.accessibilityLabel) {
-    return `page.getByLabel('${escapeString(element.accessibilityLabel)}')`;
-  }
-
-  if (element.text) {
-    // Use role if we know the element type
-    if (element.type === 'button') {
-      return `page.getByRole('button', { name: '${escapeString(element.text)}' })`;
-    }
-    if (element.type === 'link') {
-      return `page.getByRole('link', { name: '${escapeString(element.text)}' })`;
-    }
-    return `page.getByText('${escapeString(element.text)}')`;
-  }
-
-  if (element.cssSelector) {
-    return `page.locator('${element.cssSelector}')`;
-  }
-
-  if (element.coordinates) {
-    return `page.locator('body')`;
-  }
-
-  return `page.locator('body')`;
-}
 
 function generateGuardAssertion(guard: Predicate): string | null {
   switch (guard.type) {
@@ -428,9 +313,6 @@ function generateStateAssertion(state: State): string | null {
   return `await page.waitForLoadState('networkidle');`;
 }
 
-// ============================================================================
-// Helper Functions Generation
-// ============================================================================
 
 function generateHelperFunctions(spec: GremlinSpec): string {
   const lines: string[] = [];
@@ -536,15 +418,3 @@ function computeShortestPaths(spec: GremlinSpec): Record<string, Transition[]> {
   return result;
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
-
-function escapeString(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/`/g, '\\`')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r');
-}

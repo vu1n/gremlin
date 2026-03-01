@@ -139,10 +139,6 @@ export class GremlinClient {
   }
 }
 
-// ============================================================================
-// Example Usage
-// ============================================================================
-
 async function exampleUsage() {
   // Initialize client
   const client = new GremlinClient(

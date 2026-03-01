@@ -15,22 +15,29 @@
  *   gremlin deploy stop               # Stop all servers
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
-import { join } from 'path';
-import { spawn, spawnSync } from 'child_process';
-import { randomBytes } from 'crypto';
 import { output, outputError, type OutputOptions } from '../output.ts';
+import {
+  getConfigPort,
+  isPortInUse,
+  waitForHealth,
+  healthCheck,
+  checkExistingLocalServer,
+  spawnBackgroundServer,
+  stopLocalServer,
+  assertDockerAvailable,
+  resolveApiKey,
+  startDockerCompose,
+  checkDockerStatus,
+  stopDockerCompose,
+  checkRemoteStatus,
+} from './shared/deploy-service.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface DeployLocalOptions extends OutputOptions {
+interface DeployLocalOptions extends OutputOptions {
   port?: number;
   background?: boolean;
 }
 
-export interface DeployLocalResult {
+interface DeployLocalResult {
   status: 'started';
   port: number;
   url: string;
@@ -38,14 +45,14 @@ export interface DeployLocalResult {
   background: boolean;
 }
 
-export interface DeployDockerOptions extends OutputOptions {
+interface DeployDockerOptions extends OutputOptions {
   port?: number;
   apiKey?: string;
   dataDir?: string;
   detach?: boolean;
 }
 
-export interface DeployDockerResult {
+interface DeployDockerResult {
   status: 'started';
   port: number;
   url: string;
@@ -54,113 +61,35 @@ export interface DeployDockerResult {
   containerId?: string;
 }
 
-export interface DeployStatusOptions extends OutputOptions {}
+interface DeployStatusOptions extends OutputOptions {}
 
-export interface DeployStatusResult {
+interface DeployStatusResult {
   local: { running: boolean; port?: number; pid?: number; url?: string };
   docker: { running: boolean; port?: number; url?: string; containerId?: string };
   remote: { configured: boolean; url?: string; reachable?: boolean };
 }
 
-export interface DeployStopOptions extends OutputOptions {
+interface DeployStopOptions extends OutputOptions {
   target?: 'local' | 'docker' | 'all';
 }
 
-export interface DeployStopResult {
+interface DeployStopResult {
   local: { stopped: boolean; pid?: number };
   docker: { stopped: boolean };
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const GREMLIN_DIR = '.gremlin';
-const PID_FILE = join(GREMLIN_DIR, 'dev.pid');
-const CONFIG_FILE = join(GREMLIN_DIR, 'config.json');
-
-function ensureDir(dir: string): void {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-function getConfigPort(): number | undefined {
-  try {
-    const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
-    return config.devServer?.port;
-  } catch {
-    return undefined;
-  }
-}
-
-async function isPortInUse(port: number): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 500);
-    await fetch(`http://localhost:${port}/health`, { signal: controller.signal });
-    clearTimeout(timer);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function healthCheck(url: string, timeoutMs: number): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForHealth(
-  url: string,
-  maxAttempts: number,
-  intervalMs: number,
-  perAttemptTimeoutMs: number,
-): Promise<boolean> {
-  for (let i = 0; i < maxAttempts; i++) {
-    if (await healthCheck(url, perAttemptTimeoutMs)) {
-      return true;
-    }
-    if (i < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-  }
-  return false;
-}
-
-// ============================================================================
-// deployLocal
-// ============================================================================
 
 export async function deployLocal(options: DeployLocalOptions): Promise<DeployLocalResult> {
   const port = options.port ?? getConfigPort() ?? 3334;
   const background = options.background ?? false;
   const url = `http://localhost:${port}`;
 
-  // Check for stale PID file and clean up
-  if (existsSync(PID_FILE)) {
-    try {
-      const oldPid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
-      if (oldPid > 0) {
-        process.kill(oldPid, 0); // throws if not alive
-        // Process alive — port collision
-        const msg = `Gremlin server already running (PID ${oldPid}). Stop it first: gremlin deploy stop`;
-        outputError('deploy.local', [msg], options);
-        if (!options.json) console.error(`  Error: ${msg}`);
-        throw new Error(msg);
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('already running')) throw e;
-      // Dead process, clean stale PID
-      try { unlinkSync(PID_FILE); } catch {}
-    }
+  // Check for existing server process
+  const existingPid = checkExistingLocalServer();
+  if (existingPid !== null) {
+    const msg = `Gremlin server already running (PID ${existingPid}). Stop it first: gremlin deploy stop`;
+    outputError('deploy.local', [msg], options);
+    if (!options.json) console.error(`  Error: ${msg}`);
+    throw new Error(msg);
   }
 
   // Check if port is already in use by another process
@@ -181,23 +110,7 @@ export async function deployLocal(options: DeployLocalOptions): Promise<DeployLo
   }
 
   // Background mode: spawn detached child process
-  ensureDir(GREMLIN_DIR);
-
-  // Resolve CLI package directory (where src/index.ts lives)
-  const cliDir = join(import.meta.dir, '..', '..');
-
-  const child = spawn('bun', ['run', './src/index.ts', 'dev', '--port', String(port)], {
-    cwd: cliDir,
-    detached: true,
-    stdio: 'ignore',
-  });
-
-  child.unref();
-
-  const pid = child.pid;
-  if (pid) {
-    writeFileSync(PID_FILE, String(pid));
-  }
+  const pid = spawnBackgroundServer(port);
 
   // Wait for health check: max 5 attempts, 500ms apart, 2s timeout each
   const healthy = await waitForHealth(`${url}/health`, 5, 500, 2000);
@@ -221,7 +134,7 @@ export async function deployLocal(options: DeployLocalOptions): Promise<DeployLo
   if (pid) {
     console.log(`  PID:      ${pid}`);
   }
-  console.log(`  PID file: ${PID_FILE}`);
+  console.log(`  PID file: .gremlin/dev.pid`);
   console.log('');
   if (healthy) {
     console.log('  Server is healthy and accepting connections.');
@@ -234,10 +147,6 @@ export async function deployLocal(options: DeployLocalOptions): Promise<DeployLo
   return result;
 }
 
-// ============================================================================
-// deployDocker
-// ============================================================================
-
 export async function deployDocker(options: DeployDockerOptions): Promise<DeployDockerResult> {
   const port = options.port ?? 8787;
   const dataDir = options.dataDir ?? '.gremlin/server-data';
@@ -245,54 +154,22 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   const url = `http://localhost:${port}`;
 
   // Check if docker is available
-  const dockerCheck = spawnSync('docker', ['info'], { stdio: 'pipe', shell: false });
-  if (dockerCheck.status !== 0) {
-    const msg = 'Docker is not running or not installed. Install Docker from https://docs.docker.com/get-docker/';
+  try {
+    assertDockerAvailable();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     outputError('deploy.docker', [msg], options);
     if (!options.json) console.error(`  Error: ${msg}`);
-    throw new Error(msg);
+    throw err;
   }
 
-  // Persist API key across deploys
-  const keyFile = join(GREMLIN_DIR, 'docker-api-key');
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    if (existsSync(keyFile)) {
-      apiKey = readFileSync(keyFile, 'utf-8').trim();
-    } else {
-      apiKey = randomBytes(32).toString('hex');
-      ensureDir(GREMLIN_DIR);
-      writeFileSync(keyFile, apiKey, { mode: 0o600 });
-    }
-  }
+  // Resolve API key (persisted across deploys)
+  const apiKey = resolveApiKey(options.apiKey);
 
-  ensureDir(dataDir);
-
-  // Build docker compose command args — skip --build if image already exists
-  const hasImage = spawnSync('docker', ['compose', 'images', '-q'], { stdio: 'pipe', shell: false });
-  const needsBuild = !hasImage.stdout?.toString().trim();
-  const args = ['compose', 'up'];
-  if (needsBuild) args.push('--build');
-  if (detach) args.push('-d');
-
-  // Set environment variables for docker compose
-  const env = {
-    ...process.env,
-    API_KEY: apiKey,
-    PORT: String(port),
-    DATA_DIR: dataDir,
-  };
-
+  // Start docker compose
+  let containerId: string | undefined;
   try {
-    // Use spawnSync with argument array to prevent command injection
-    const result = spawnSync('docker', args, {
-      env,
-      stdio: detach ? 'pipe' : 'inherit',
-      shell: false,
-    });
-    if (result.status !== 0) {
-      throw new Error(`docker compose failed with exit code ${result.status}`);
-    }
+    containerId = startDockerCompose({ port, apiKey, dataDir, detach });
   } catch (err) {
     const message = `Failed to start docker compose: ${err instanceof Error ? err.message : String(err)}`;
     outputError('deploy.docker', [message], options);
@@ -300,22 +177,6 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
       console.error(`  Error: ${message}`);
     }
     throw err;
-  }
-
-  // Get container ID if detached
-  let containerId: string | undefined;
-  if (detach) {
-    try {
-      const result = spawnSync('docker', ['compose', 'ps', '-q', 'gremlin-server'], {
-        encoding: 'utf-8',
-        shell: false,
-      });
-      if (result.stdout) {
-        containerId = result.stdout.trim();
-      }
-    } catch {
-      // Non-critical, continue without container ID
-    }
   }
 
   // Wait for health check: max 10 attempts, 500ms apart, 5s timeout each
@@ -339,7 +200,7 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   console.log('');
   console.log(`  Status:       ${healthy ? 'Running' : 'Starting...'}`);
   console.log(`  URL:          ${url}`);
-  console.log(`  API Key:      ${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`);
+  console.log(`  API Key:      ${'*'.repeat(apiKey.length - 4)}${apiKey.slice(-4)}`);
   console.log(`  Data Dir:     ${dataDir}`);
   if (containerId) {
     console.log(`  Container:    ${containerId.slice(0, 12)}`);
@@ -354,33 +215,25 @@ export async function deployDocker(options: DeployDockerOptions): Promise<Deploy
   console.log('');
   console.log('  Configure your SDK:');
   console.log(`    serverUrl: "${url}"`);
-  console.log(`    apiKey:    "${apiKey.slice(0, 4)}...${apiKey.slice(-4)}"`);
+  console.log(`    apiKey:    "${'*'.repeat(apiKey.length - 4)}${apiKey.slice(-4)}"`);
   console.log('');
 
   return result;
 }
 
-// ============================================================================
-// deployStatus
-// ============================================================================
-
 export async function deployStatus(options: DeployStatusOptions): Promise<DeployStatusResult> {
   // Check local dev server
   const configPort = getConfigPort() ?? 3334;
   const local: DeployStatusResult['local'] = { running: false };
-  if (existsSync(PID_FILE)) {
-    try {
-      const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
-      // Check if process is alive
-      process.kill(pid, 0);
-      local.pid = pid;
-      local.port = configPort;
-      local.url = `http://localhost:${local.port}`;
-      local.running = await healthCheck(`${local.url}/health`, 2000);
-    } catch {
-      // Process not running, stale PID file
-    }
+
+  const existingPid = checkExistingLocalServer();
+  if (existingPid !== null) {
+    local.pid = existingPid;
+    local.port = configPort;
+    local.url = `http://localhost:${local.port}`;
+    local.running = await healthCheck(`${local.url}/health`, 2000);
   }
+
   // Also try health check on configured port even without PID file
   if (!local.running) {
     const defaultHealthy = await healthCheck(`http://localhost:${configPort}/health`, 2000);
@@ -392,56 +245,10 @@ export async function deployStatus(options: DeployStatusOptions): Promise<Deploy
   }
 
   // Check docker
-  const docker: DeployStatusResult['docker'] = { running: false };
-  try {
-    const result = spawnSync('docker', ['compose', 'ps', '--format', 'json'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: false,
-    });
-    const psOutput = result.stdout?.trim();
-    if (psOutput) {
-      // docker compose ps --format json outputs one JSON object per line
-      const lines = psOutput.split('\n').filter(Boolean);
-      for (const line of lines) {
-        try {
-          const container = JSON.parse(line);
-          if (container.State === 'running' || container.Status?.startsWith('Up')) {
-            docker.running = true;
-            docker.containerId = container.ID;
-            // Parse port from Publishers or Ports field
-            const publishers = container.Publishers;
-            if (Array.isArray(publishers) && publishers.length > 0) {
-              docker.port = publishers[0].PublishedPort;
-            }
-            if (docker.port) {
-              docker.url = `http://localhost:${docker.port}`;
-            }
-            break;
-          }
-        } catch {
-          // Skip unparseable lines
-        }
-      }
-    }
-  } catch {
-    // docker compose not available or not configured
-  }
+  const docker: DeployStatusResult['docker'] = checkDockerStatus();
 
   // Check remote
-  const remote: DeployStatusResult['remote'] = { configured: false };
-  if (existsSync(CONFIG_FILE)) {
-    try {
-      const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
-      if (config.remoteServer?.url) {
-        remote.configured = true;
-        remote.url = config.remoteServer.url;
-        remote.reachable = await healthCheck(`${remote.url}/health`, 5000);
-      }
-    } catch {
-      // Invalid config file
-    }
-  }
+  const remote: DeployStatusResult['remote'] = await checkRemoteStatus();
 
   const result: DeployStatusResult = { local, docker, remote };
 
@@ -487,11 +294,7 @@ export async function deployStatus(options: DeployStatusOptions): Promise<Deploy
   return result;
 }
 
-// ============================================================================
-// deployStop
-// ============================================================================
-
-export async function deployStop(options: DeployStopOptions): Promise<DeployStopResult> {
+export function deployStop(options: DeployStopOptions): DeployStopResult {
   const target = options.target ?? 'all';
 
   const result: DeployStopResult = {
@@ -501,43 +304,12 @@ export async function deployStop(options: DeployStopOptions): Promise<DeployStop
 
   // Stop local
   if (target === 'local' || target === 'all') {
-    if (existsSync(PID_FILE)) {
-      try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
-        // Verify process exists before killing (pid 0 would signal the process group)
-        if (pid > 0) {
-          process.kill(pid, 0); // Check if alive without signaling
-          process.kill(pid, 'SIGTERM');
-          result.local = { stopped: true, pid };
-        } else {
-          result.local = { stopped: true };
-        }
-      } catch {
-        // Process already gone or invalid PID
-        result.local = { stopped: true };
-      }
-      try {
-        unlinkSync(PID_FILE);
-      } catch {
-        // PID file already removed
-      }
-    }
+    result.local = stopLocalServer();
   }
 
   // Stop docker
   if (target === 'docker' || target === 'all') {
-    try {
-      const dockerResult = spawnSync('docker', ['compose', 'down'], {
-        stdio: 'pipe',
-        shell: false,
-      });
-      if (dockerResult.status === 0) {
-        result.docker = { stopped: true };
-      }
-    } catch {
-      // docker compose not available or nothing to stop
-      result.docker = { stopped: true };
-    }
+    result.docker = { stopped: stopDockerCompose() };
   }
 
   if (output('deploy.stop', result, options)) return result;

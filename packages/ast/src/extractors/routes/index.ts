@@ -1,2 +1,2 @@
-export { extractVanillaWebRoutes } from './vanilla-web.js';
-export { extractExpoRoutes, printRoutes } from './expo.js';
+export { extractVanillaWebRoutes } from './vanilla-web.ts';
+export { extractExpoRoutes, printRoutes } from './expo.ts';

@@ -9,14 +9,10 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync, copyFileSync } from 'fs';
 import { join, basename, resolve } from 'path';
 import { spawnSync } from 'child_process';
-import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from '../detect.ts';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { detectFramework, formatFramework, getFrameworkInfo, findEntryPoint, getInitCode, type Framework } from './shared/detect.ts';
+import { output, exitWithError, type OutputOptions } from '../output.ts';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface InitOptions extends OutputOptions {
+interface InitOptions extends OutputOptions {
   appName?: string;
   framework?: string;
   skipInstall?: boolean;
@@ -25,7 +21,7 @@ export interface InitOptions extends OutputOptions {
   force?: boolean;
 }
 
-export interface InitResult {
+interface InitResult {
   initialized: true;
   framework: Framework;
   frameworkDisplay: string;
@@ -38,11 +34,7 @@ export interface InitResult {
   gitignoreUpdated: boolean;
 }
 
-// ============================================================================
-// Main Command
-// ============================================================================
-
-export async function init(options: InitOptions): Promise<InitResult> {
+export function init(options: InitOptions): InitResult {
   const cwd = process.cwd();
 
   // --- Detect framework ---
@@ -70,11 +62,7 @@ export async function init(options: InitOptions): Promise<InitResult> {
   // --- Check for existing .gremlin directory ---
   const gremlinDir = join(cwd, '.gremlin');
   if (existsSync(join(gremlinDir, 'config.json')) && !options.force) {
-    const msg = '.gremlin/config.json already exists. Use --force to reinitialize.';
-    if (!outputError('init', [msg], options)) {
-      console.error(`Error: ${msg}`);
-    }
-    process.exit(1);
+    exitWithError('init', '.gremlin/config.json already exists. Use --force to reinitialize.', options);
   }
 
   if (!options.json) {
@@ -136,11 +124,7 @@ export async function init(options: InitOptions): Promise<InitResult> {
     if (result.status !== 0) {
       const stderr = result.stderr?.toString() || '';
       const msg = `Failed to install ${info.sdkPackage}: ${stderr || 'exit code ' + result.status}`;
-      if (!outputError('init', [msg], options)) {
-        console.error(`  Error: ${msg}`);
-        console.error(`  Run manually: ${info.installCommand}`);
-      }
-      process.exit(1);
+      exitWithError('init', msg, options);
     }
 
     if (!options.json) {
@@ -164,11 +148,7 @@ export async function init(options: InitOptions): Promise<InitResult> {
 
       // Ensure the resolved path is within the current working directory
       if (!fullPath.startsWith(resolve(cwd))) {
-        const msg = `Security error: Invalid entry point path (potential path traversal attack)`;
-        if (!outputError('init', [msg], options)) {
-          console.error(`Error: ${msg}`);
-        }
-        process.exit(1);
+        exitWithError('init', 'Security error: Invalid entry point path (potential path traversal attack)', options);
       }
 
       const backupPath = fullPath + '.gremlin-backup';
@@ -269,10 +249,6 @@ export async function init(options: InitOptions): Promise<InitResult> {
 
   return result;
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 /**
  * Inject init code after existing imports in a source file.

@@ -12,6 +12,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@gremlin/recorder-react-native": "workspace:*",
     "@gremlin/session": "workspace:*",
     "expo": "~54.0.27",
     "expo-router": "^6.0.17",

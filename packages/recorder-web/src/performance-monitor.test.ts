@@ -1,9 +1,5 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { WebPerformanceMonitor } from './performance-monitor';
-
-// ============================================================================
-// Browser API Mocks
-// ============================================================================
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { WebPerformanceMonitor } from './performance-monitor.ts';
 
 // Save originals
 const origRAF = globalThis.requestAnimationFrame;
@@ -75,10 +71,6 @@ function removePerformanceMemory() {
     delete (performance as any).memory;
   }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 describe('WebPerformanceMonitor', () => {
   let mocks: ReturnType<typeof installBrowserMocks>;

@@ -9,42 +9,7 @@
  */
 
 import type { GremlinSession, GremlinEvent } from '@gremlin/session';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface TransportConfig {
-  /**
-   * Dev server endpoint.
-   * For RN, use your machine's IP: http://192.168.1.100:3334
-   * Default: http://localhost:3334 (works in simulator on same machine)
-   */
-  endpoint?: string;
-
-  /**
-   * Fall back to AsyncStorage if server unavailable.
-   * Requires @react-native-async-storage/async-storage as peer dep.
-   * Default: false (since it requires extra dependency)
-   */
-  fallbackToStorage?: boolean;
-
-  /**
-   * Upload session automatically when recording stops.
-   * Default: true
-   */
-  autoUpload?: boolean;
-
-  /**
-   * Upload events in batches during recording (for long sessions).
-   * Interval in milliseconds. Set to 0 to disable.
-   * Default: 30000 (30 seconds)
-   */
-  batchInterval?: number;
-
-  /** Debug logging */
-  debug?: boolean;
-}
+import type { TransportConfig } from './types.ts';
 
 export interface TransportResult {
   success: boolean;
@@ -52,11 +17,19 @@ export interface TransportResult {
   error?: string;
 }
 
+/** Minimal structural type for the subset of AsyncStorage API we use. */
+interface AsyncStorageLike {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+  getAllKeys(): Promise<string[]>;
+}
+
 // Lazy-load AsyncStorage to avoid Metro bundling issues with optional peer deps
-let _asyncStorage: any;
+let _asyncStorage: AsyncStorageLike | null;
 let _asyncStorageResolved = false;
 
-function getAsyncStorage(): any {
+function getAsyncStorage(): AsyncStorageLike | null {
   if (_asyncStorageResolved) return _asyncStorage;
   _asyncStorageResolved = true;
   try {
@@ -67,12 +40,24 @@ function getAsyncStorage(): any {
   return _asyncStorage;
 }
 
-// ============================================================================
-// LocalTransport
-// ============================================================================
+
+type LogFn = (msg: string, ...args: unknown[]) => void;
+
+function createLogger(debug: boolean): { log: LogFn; error: LogFn } {
+  if (!debug) {
+    const noop: LogFn = () => {};
+    return { log: noop, error: noop };
+  }
+  return {
+    log: (msg, ...args) => console.debug(`[GremlinTransport] ${msg}`, ...args),
+    error: (msg, ...args) => console.debug(`[GremlinTransport] ${msg}`, ...args),
+  };
+}
+
 
 export class LocalTransport {
   private config: Required<TransportConfig>;
+  private debug: { log: LogFn; error: LogFn };
   private serverAvailable: boolean | null = null;
   private batchTimer: ReturnType<typeof setInterval> | null = null;
   private pendingEvents: GremlinEvent[] = [];
@@ -87,18 +72,19 @@ export class LocalTransport {
       debug: config.debug ?? false,
     };
 
-    if (this.config.debug) {
-      console.log('[GremlinTransport] Initialized', {
-        endpoint: this.config.endpoint,
-        fallbackToStorage: this.config.fallbackToStorage,
-        asyncStorageAvailable: !!getAsyncStorage(),
-      });
-    }
+    this.debug = createLogger(this.config.debug);
+    this.debug.log('Initialized', {
+      endpoint: this.config.endpoint,
+      fallbackToStorage: this.config.fallbackToStorage,
+      asyncStorageAvailable: !!getAsyncStorage(),
+    });
   }
 
-  /**
-   * Start batch uploading for a session.
-   */
+  /** Return the configured endpoint URL. */
+  getEndpoint(): string {
+    return this.config.endpoint;
+  }
+
   startBatching(sessionId: string): void {
     this.sessionId = sessionId;
     this.pendingEvents = [];
@@ -110,16 +96,10 @@ export class LocalTransport {
     }
   }
 
-  /**
-   * Queue an event for batch upload.
-   */
   queueEvent(event: GremlinEvent): void {
     this.pendingEvents.push(event);
   }
 
-  /**
-   * Stop batch uploading.
-   */
   stopBatching(): void {
     // Fire-and-forget: full session upload follows immediately, so no data loss
     void this.flushBatch();
@@ -129,9 +109,6 @@ export class LocalTransport {
     }
   }
 
-  /**
-   * Upload a complete session.
-   */
   async upload(session: GremlinSession): Promise<TransportResult> {
     // Stop any active batching
     this.stopBatching();
@@ -154,16 +131,13 @@ export class LocalTransport {
     };
   }
 
-  /**
-   * Upload batched events (incremental upload during recording).
-   */
   async uploadBatch(
     sessionId: string,
     events: GremlinEvent[],
-    rrwebEvents?: any[]
+    rrwebEvents?: unknown[]
   ): Promise<TransportResult> {
     try {
-      const response = await fetch(`${this.config.endpoint}/session/append`, {
+      const response = await fetch(`${this.config.endpoint}/v1/sessions/${sessionId}/events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,12 +153,7 @@ export class LocalTransport {
 
       if (response.ok) {
         this.serverAvailable = true;
-        if (this.config.debug) {
-          console.log('[GremlinTransport] Batch uploaded', {
-            sessionId,
-            events: events.length,
-          });
-        }
+        this.debug.log('Batch uploaded', { sessionId, events: events.length });
         return { success: true, method: 'server' };
       }
 
@@ -196,38 +165,30 @@ export class LocalTransport {
     } catch (e) {
       this.serverAvailable = false;
       const error = e instanceof Error ? e.message : 'Unknown error';
-      if (this.config.debug) {
-        console.log('[GremlinTransport] Batch upload failed', error);
-      }
+      this.debug.log('Batch upload failed', error);
       return { success: false, method: 'server', error };
     }
   }
 
-  /**
-   * Check if dev server is available.
-   */
   async checkServer(): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
-
       const response = await fetch(`${this.config.endpoint}/health`, {
         method: 'GET',
         signal: controller.signal,
       });
 
-      clearTimeout(timeout);
       this.serverAvailable = response.ok;
       return this.serverAvailable;
     } catch {
       this.serverAvailable = false;
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
-  /**
-   * Get server availability status.
-   */
   isServerAvailable(): boolean | null {
     return this.serverAvailable;
   }
@@ -241,7 +202,7 @@ export class LocalTransport {
 
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const sessionKeys = keys.filter((k: string) => k.startsWith('gremlin_session_'));
+      const sessionKeys = keys.filter((k) => k.startsWith('gremlin_session_'));
 
       let flushed = 0;
       for (const key of sessionKeys) {
@@ -257,14 +218,12 @@ export class LocalTransport {
             flushed++;
           }
         } catch (e) {
-          if (this.config.debug) {
-            console.error('[GremlinTransport] Failed to flush session', key, e);
-          }
+          this.debug.error('Failed to flush session', key, e);
         }
       }
 
-      if (this.config.debug && flushed > 0) {
-        console.log(`[GremlinTransport] Flushed ${flushed} stored sessions`);
+      if (flushed > 0) {
+        this.debug.log(`Flushed ${flushed} stored sessions`);
       }
 
       return flushed;
@@ -295,7 +254,7 @@ export class LocalTransport {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(`${this.config.endpoint}/session`, {
+      const response = await fetch(`${this.config.endpoint}/v1/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -304,17 +263,13 @@ export class LocalTransport {
         signal: controller.signal,
       });
 
-      clearTimeout(timeout);
-
       if (response.ok) {
         this.serverAvailable = true;
-        if (this.config.debug) {
-          console.log('[GremlinTransport] Session uploaded', {
-            sessionId: session.header.sessionId,
-            events: session.events.length,
-            elements: session.elements.length,
-          });
-        }
+        this.debug.log('Session uploaded', {
+          sessionId: session.header.sessionId,
+          events: session.events.length,
+          elements: session.elements.length,
+        });
         return { success: true, method: 'server' };
       }
 
@@ -324,15 +279,13 @@ export class LocalTransport {
         error: `Server returned ${response.status}`,
       };
     } catch (e) {
-      clearTimeout(timeout);
       this.serverAvailable = false;
       const error = e instanceof Error ? e.message : 'Unknown error';
-
-      if (this.config.debug) {
-        console.log('[GremlinTransport] Server unavailable', error);
-      }
+      this.debug.log('Server unavailable', error);
 
       return { success: false, method: 'server', error };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -350,12 +303,10 @@ export class LocalTransport {
       const key = `gremlin_session_${session.header.sessionId}`;
       await AsyncStorage.setItem(key, JSON.stringify(session));
 
-      if (this.config.debug) {
-        console.log('[GremlinTransport] Session saved to AsyncStorage', {
-          sessionId: session.header.sessionId,
-          key,
-        });
-      }
+      this.debug.log('Session saved to AsyncStorage', {
+        sessionId: session.header.sessionId,
+        key,
+      });
 
       return { success: true, method: 'storage' };
     } catch (e) {

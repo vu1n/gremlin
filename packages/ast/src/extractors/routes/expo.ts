@@ -1,6 +1,6 @@
 import { join, relative, sep } from 'path';
 import { readdirSync, statSync, existsSync } from 'fs';
-import type { Route, RouteExtractorConfig, RouteExtractionResult } from '../../types.js';
+import type { Route, RouteExtractorConfig, RouteExtractionResult } from '../../types.ts';
 
 const DEFAULT_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js'];
 

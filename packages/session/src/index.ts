@@ -10,9 +10,12 @@
  * NO heavy dependencies - safe for client-side bundling.
  */
 
-export const VERSION = '0.0.1';
+// --- Constants ---
+export { SCHEMA_VERSION, SDK_VERSION } from './constants.ts';
+/** @deprecated Use SDK_VERSION instead */
+export { SDK_VERSION as VERSION } from './constants.ts';
 
-// Session types
+// --- Contracts (types, interfaces, enums) ---
 export type {
   GremlinSession,
   SessionHeader,
@@ -37,16 +40,24 @@ export type {
   SessionPerformance,
   Screenshot,
   SessionAnalytics,
-} from './types';
-export { EventTypeEnum, createSession, getOrCreateElement, addEvent } from './types';
+  UploadResult,
+} from './types.ts';
+export { EventTypeEnum } from './types.ts';
 
-// Event batching
-export type { ScrollBatch, BatcherConfig, BatcherCallbacks } from './batcher';
-export { EventBatcher } from './batcher';
+// --- Runtime helpers (session creation & mutation) ---
+export { createSession, getOrCreateElement, addEvent, generateSessionId } from './builders.ts';
 
-// Base recorder
-export type { BaseRecorderConfig, SessionMetadata } from './recorder-base';
-export { BaseRecorder } from './recorder-base';
+// --- Event batching ---
+export type { ScrollBatch, BatcherConfig, BatcherCallbacks } from './batcher.ts';
+export { EventBatcher } from './batcher.ts';
 
-// Transport
-export * from './transport/index';
+// --- Base recorder (platform-agnostic) ---
+export type { BaseRecorderConfig, SessionMetadata, PerformanceProvider, RecorderCapability } from './recorder-base.ts';
+export { BaseRecorder } from './recorder-base.ts';
+
+// --- Network interceptor (shared between web and RN recorders) ---
+export type { NetworkInterceptorConfig } from './network-interceptor.ts';
+export { NetworkInterceptor, sanitizeUrl, shouldIgnoreUrl } from './network-interceptor.ts';
+
+// --- Transport ---
+export * from './transport/index.ts';

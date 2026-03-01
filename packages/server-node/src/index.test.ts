@@ -4,9 +4,9 @@ import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { Hono } from 'hono';
-import type { ServerConfig } from './types';
-import { createApp } from './index';
-import { storeSession } from './storage';
+import type { ServerConfig } from './types.ts';
+import { createApp } from './index.ts';
+import { storeSession } from './storage.ts';
 import type { GremlinSession } from '@gremlin/session';
 
 function makeConfig(dataDir: string, overrides?: Partial<ServerConfig>): ServerConfig {
@@ -67,16 +67,16 @@ describe('auth middleware', () => {
     const res = await app.request('/v1/sessions');
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.code).toBe('UNAUTHORIZED');
+    expect(body.error.code).toBe('AUTH_REQUIRED');
   });
 
-  it('returns 403 when wrong API key provided', async () => {
+  it('returns 401 when wrong API key provided', async () => {
     const res = await app.request('/v1/sessions', {
       headers: { 'X-API-Key': 'wrong-key' },
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.code).toBe('FORBIDDEN');
+    expect(body.error.code).toBe('AUTH_INVALID');
     expect(body.error.message).toBe('Invalid API key');
   });
 
@@ -87,16 +87,16 @@ describe('auth middleware', () => {
     expect(res.status).toBe(200);
   });
 
-  it('returns 403 when server has no API key configured', async () => {
+  it('returns 401 when server has no API key configured', async () => {
     const noKeyConfig = makeConfig(tmpDir, { apiKey: undefined, disableAuth: false });
     const noKeyApp = createApp(noKeyConfig);
 
     const res = await noKeyApp.request('/v1/sessions', {
       headers: { 'X-API-Key': 'some-key' },
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.message).toBe('API key is not configured on server');
+    expect(body.error.code).toBe('AUTH_REQUIRED');
   });
 
   it('bypasses auth when DISABLE_AUTH is true', async () => {
@@ -107,8 +107,15 @@ describe('auth middleware', () => {
     expect(res.status).toBe(200);
   });
 
-  it('does not require auth for non-v1 routes', async () => {
+  it('requires auth for /health', async () => {
     const res = await app.request('/health');
+    expect(res.status).toBe(401);
+  });
+
+  it('allows /health with correct API key', async () => {
+    const res = await app.request('/health', {
+      headers: { 'X-API-Key': 'test-api-key-123' },
+    });
     expect(res.status).toBe(200);
   });
 });
@@ -133,7 +140,9 @@ describe('GET /', () => {
 
 describe('GET /health', () => {
   it('returns 200 with status ok', async () => {
-    const res = await app.request('/health');
+    const res = await app.request('/health', {
+      headers: { 'X-API-Key': 'test-api-key-123' },
+    });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('ok');
@@ -148,7 +157,9 @@ describe('GET /health', () => {
 
 describe('GET /metrics', () => {
   it('returns metrics', async () => {
-    const res = await app.request('/metrics');
+    const res = await app.request('/metrics', {
+      headers: { 'X-API-Key': 'test-api-key-123' },
+    });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('ok');

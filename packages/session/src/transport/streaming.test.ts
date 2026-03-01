@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { StreamingTransport } from './streaming';
-import type { GremlinEvent } from '../types';
+import { StreamingTransport } from './streaming.ts';
+import type { GremlinEvent } from '../types.ts';
 
 // ============================================================================
 // Mock Server
@@ -41,7 +41,9 @@ beforeAll(() => {
       requestCount++;
       const url = new URL(req.url);
 
-      if (url.pathname === '/session/append' && req.method === 'POST') {
+      // Match /v1/sessions/:id/events (append endpoint)
+      const eventsMatch = url.pathname.match(/^\/v1\/sessions\/[^/]+\/events$/);
+      if (eventsMatch && req.method === 'POST') {
         if (shouldFail || failsRemaining > 0) {
           if (failsRemaining > 0) failsRemaining--;
           failCount++;
@@ -55,7 +57,7 @@ beforeAll(() => {
         });
       }
 
-      if (url.pathname === '/session' && req.method === 'POST') {
+      if (url.pathname === '/v1/sessions' && req.method === 'POST') {
         if (shouldFail) {
           return new Response('Server Error', { status: 500 });
         }

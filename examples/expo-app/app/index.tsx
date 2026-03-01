@@ -1,75 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Button } from '../components/Button';
 import { useCartStore } from '../store/cart';
-import { useGremlin, type GremlinSession } from '../lib/gremlin';
+import { useRecorderActions } from '../hooks/useRecorderActions';
 
 export default function HomeScreen() {
   const router = useRouter();
   const itemCount = useCartStore((state) => state.getItemCount());
-  const { isRecording, startRecording, stopRecording, getSession } = useGremlin();
-  const [eventCount, setEventCount] = useState(0);
-
-  const handleToggleRecording = () => {
-    if (isRecording) {
-      const session = stopRecording();
-      if (session) {
-        const count = session.events?.length || 0;
-        Alert.alert(
-          'Recording Stopped',
-          `Captured ${count} events. Use "Export Session" to save.`
-        );
-      }
-    } else {
-      startRecording();
-      Alert.alert('Recording Started', 'Interact with the app to capture events.');
-    }
-  };
-
-  const handleExportSession = async () => {
-    const session = getSession();
-    if (!session || !session.events?.length) {
-      Alert.alert('No Session', 'No recorded session to export. Start recording first.');
-      return;
-    }
-
-    const sessionJson = JSON.stringify(session, null, 2);
-    console.log('=== GREMLIN SESSION ===');
-    console.log(sessionJson);
-    console.log('=== END SESSION ===');
-
-    try {
-      await Share.share({
-        message: sessionJson,
-        title: `gremlin-session-${session.header?.sessionId || 'unknown'}.json`,
-      });
-    } catch (error) {
-      Alert.alert('Export', 'Session logged to console. Check Metro logs.');
-    }
-  };
+  const { isRecording, toggleRecording, exportSession, getStats } = useRecorderActions();
 
   const handleViewStats = () => {
-    const session = getSession();
-    if (!session) {
+    const stats = getStats();
+    if (!stats) {
       Alert.alert('No Session', 'No active session.');
       return;
     }
 
-    const events = session.events || [];
-    const elements = session.elements || [];
-    const eventTypes: Record<string, number> = {};
-    events.forEach((e: any) => {
-      const type = e.data?.kind || 'unknown';
-      eventTypes[type] = (eventTypes[type] || 0) + 1;
-    });
-
     Alert.alert(
       'Session Stats',
-      `Events: ${events.length}\n` +
-      `Elements: ${elements.length}\n` +
-      `Types: ${JSON.stringify(eventTypes, null, 2)}`
+      `Events: ${stats.eventCount}\n` +
+      `Elements: ${stats.elementCount}\n` +
+      `Types: ${JSON.stringify(stats.eventTypes, null, 2)}`
     );
   };
 
@@ -140,7 +92,7 @@ export default function HomeScreen() {
             title={isRecording ? 'Stop Recording' : 'Start Recording'}
             testID="recorder-toggle-button"
             variant={isRecording ? 'secondary' : 'primary'}
-            onPress={handleToggleRecording}
+            onPress={toggleRecording}
           />
           <View style={styles.recorderActions}>
             <Button
@@ -154,7 +106,7 @@ export default function HomeScreen() {
               title="Export Session"
               testID="recorder-export-button"
               variant="secondary"
-              onPress={handleExportSession}
+              onPress={exportSession}
               style={styles.halfButton}
             />
           </View>

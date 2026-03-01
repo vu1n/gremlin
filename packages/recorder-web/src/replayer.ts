@@ -7,10 +7,6 @@
 
 import type { eventWithTime } from 'rrweb';
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface ReplayerConfig {
   /** Container element to mount the player */
   container: HTMLElement;
@@ -60,10 +56,6 @@ export interface RrwebSession {
   };
 }
 
-// ============================================================================
-// Replayer
-// ============================================================================
-
 /**
  * Session replayer using rrweb-player.
  *
@@ -93,9 +85,6 @@ export class GremlinReplayer {
     };
   }
 
-  /**
-   * Load a session for replay.
-   */
   async load(session: RrwebSession): Promise<void> {
     if (!session.events || session.events.length === 0) {
       throw new Error('No rrweb events to replay');
@@ -117,7 +106,7 @@ export class GremlinReplayer {
     }
 
     // Clear container
-    this.config.container.innerHTML = '';
+    this.config.container.replaceChildren();
 
     // Create player
     this.player = new rrwebPlayer({
@@ -142,9 +131,6 @@ export class GremlinReplayer {
     }
   }
 
-  /**
-   * Start or resume playback.
-   */
   play(): void {
     if (!this.player) {
       console.warn('GremlinReplayer: No session loaded');
@@ -155,9 +141,6 @@ export class GremlinReplayer {
     this.isPlaying = true;
   }
 
-  /**
-   * Pause playback.
-   */
   pause(): void {
     if (!this.player) return;
 
@@ -165,9 +148,6 @@ export class GremlinReplayer {
     this.isPlaying = false;
   }
 
-  /**
-   * Toggle play/pause.
-   */
   toggle(): void {
     if (this.isPlaying) {
       this.pause();
@@ -176,36 +156,24 @@ export class GremlinReplayer {
     }
   }
 
-  /**
-   * Seek to a specific time (ms).
-   */
   goto(timeMs: number): void {
     if (!this.player) return;
 
     this.player.goto(timeMs);
   }
 
-  /**
-   * Set playback speed.
-   */
   setSpeed(speed: number): void {
     if (!this.player) return;
 
     this.player.setSpeed(speed);
   }
 
-  /**
-   * Get current playback time (ms).
-   */
   getCurrentTime(): number {
     if (!this.player) return 0;
 
     return this.player.getCurrentTime();
   }
 
-  /**
-   * Get total duration (ms).
-   */
   getDuration(): number {
     if (!this.session?.events || this.session.events.length === 0) return 0;
 
@@ -214,16 +182,10 @@ export class GremlinReplayer {
     return last - first;
   }
 
-  /**
-   * Check if currently playing.
-   */
   isActive(): boolean {
     return this.isPlaying;
   }
 
-  /**
-   * Destroy the player and clean up.
-   */
   destroy(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -236,7 +198,7 @@ export class GremlinReplayer {
     this.session = null;
     this.isPlaying = false;
     // Clear container
-    this.config.container.innerHTML = '';
+    this.config.container.replaceChildren();
   }
 
   // ========================================================================

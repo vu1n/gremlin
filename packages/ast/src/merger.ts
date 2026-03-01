@@ -2,7 +2,7 @@
  * Spec Merger - Combines AST routes with session data to produce GremlinSpec
  */
 
-import type { Route } from './types.js';
+import type { Route } from './types.ts';
 import type { GremlinSession, NavigationEvent } from '@gremlin/session';
 import { EventTypeEnum } from '@gremlin/session';
 import type {

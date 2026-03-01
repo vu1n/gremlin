@@ -1,10 +1,6 @@
 import { describe, test, expect } from 'bun:test';
-import { formatEvent, formatSessionsForPrompt } from './flow-analyzer';
+import { formatEvent, formatSessionsForPrompt } from './flow-analyzer.ts';
 import type { GremlinSession } from '@gremlin/session';
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function makeSession(overrides?: Partial<GremlinSession>): GremlinSession {
   return {
@@ -32,10 +28,6 @@ function makeTapEvent(opts?: { perf?: any; elementIndex?: number }) {
     perf: opts?.perf,
   };
 }
-
-// ============================================================================
-// formatEvent
-// ============================================================================
 
 describe('formatEvent()', () => {
   test('appends [perf: fps=X, lag=Xms, longTasks=X] suffix when event has perf data', () => {
@@ -104,10 +96,6 @@ describe('formatEvent()', () => {
     expect(result).toContain('[perf: fps=55]');
   });
 });
-
-// ============================================================================
-// formatSessionsForPrompt
-// ============================================================================
 
 describe('formatSessionsForPrompt()', () => {
   test('includes "Performance: LCP=Xms, ..." line when session.performance exists', () => {

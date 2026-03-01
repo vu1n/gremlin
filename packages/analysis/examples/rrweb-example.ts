@@ -1,16 +1,12 @@
 /**
  * Example usage of the rrweb importer
  *
- * This demonstrates how to import rrweb recordings from various sources:
- * 1. Direct rrweb recording data
- * 2. PostHog exports
- * 3. JSON files
+ * Demonstrates importing rrweb recordings from various sources:
+ * direct event arrays, PostHog exports, and JSON files.
  */
 
 import {
   importRrwebRecording,
-  parseRrwebFile,
-  createRrwebImporter,
   RrwebEventType,
   IncrementalSource,
   MouseInteractions,
@@ -18,14 +14,15 @@ import {
   type RrwebImportOptions,
 } from '../src/importers/rrweb';
 
-// ============================================================================
-// Example 1: Import from raw rrweb events
-// ============================================================================
+// Fixed base timestamp for deterministic output (2023-11-14T22:13:20Z)
+const BASE_TIMESTAMP = 1700000000000;
+
+// --- Example 1: Import from raw rrweb events ---
 
 const exampleEvents: RrwebEvent[] = [
   {
     type: RrwebEventType.Meta,
-    timestamp: Date.now(),
+    timestamp: BASE_TIMESTAMP,
     data: {
       href: 'https://example.com/app',
       width: 1920,
@@ -34,7 +31,7 @@ const exampleEvents: RrwebEvent[] = [
   },
   {
     type: RrwebEventType.FullSnapshot,
-    timestamp: Date.now() + 10,
+    timestamp: BASE_TIMESTAMP + 10,
     data: {
       node: {
         type: 1,
@@ -50,7 +47,7 @@ const exampleEvents: RrwebEvent[] = [
   },
   {
     type: RrwebEventType.IncrementalSnapshot,
-    timestamp: Date.now() + 1000,
+    timestamp: BASE_TIMESTAMP + 1000,
     data: {
       source: IncrementalSource.MouseInteraction,
       type: MouseInteractions.Click,
@@ -61,15 +58,12 @@ const exampleEvents: RrwebEvent[] = [
   },
 ];
 
-// Basic import
 const session1 = importRrwebRecording(exampleEvents);
 console.log('Imported session:', session1.header.sessionId);
 console.log('Events:', session1.events.length);
 console.log('Elements:', session1.elements.length);
 
-// ============================================================================
-// Example 2: Import with custom options
-// ============================================================================
+// --- Example 2: Import with custom options ---
 
 const options: RrwebImportOptions = {
   sessionId: 'custom-session-id',
@@ -83,16 +77,14 @@ const options: RrwebImportOptions = {
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
     locale: 'en-US',
   },
-  maskInputs: true, // Mask password fields
-  includeConsoleErrors: true, // Include console.error() calls
+  maskInputs: true,
+  includeConsoleErrors: true,
 };
 
 const session2 = importRrwebRecording(exampleEvents, options);
 console.log('Custom session:', session2.header.sessionId);
 
-// ============================================================================
-// Example 3: Import from JSON file
-// ============================================================================
+// --- Example 3: Import from JSON file ---
 
 const jsonContent = `[
   {
@@ -106,34 +98,25 @@ const jsonContent = `[
   }
 ]`;
 
-const session3 = parseRrwebFile(jsonContent);
+const session3 = importRrwebRecording(JSON.parse(jsonContent) as RrwebEvent[]);
 console.log('Session from JSON:', session3.header.sessionId);
 
-// ============================================================================
-// Example 4: Use importer instance for multiple recordings
-// ============================================================================
+// --- Example 4: Import multiple recordings with shared options ---
 
-const importer = createRrwebImporter({
+const sharedOptions: RrwebImportOptions = {
   app: { name: 'MyApp', version: '1.0.0' },
   maskInputs: true,
-});
+};
 
-// Process multiple recordings with the same configuration
 const recordings = [exampleEvents, exampleEvents, exampleEvents];
 const sessions = recordings.map((recording) =>
-  importer.importRecording(recording)
+  importRrwebRecording(recording, sharedOptions)
 );
-
 console.log('Processed', sessions.length, 'recordings');
 
-// ============================================================================
-// Example 5: Import PostHog export
-// ============================================================================
+// --- Example 5: Import PostHog export ---
 
-// PostHog exports are just rrweb events, so you can import them directly:
-// 1. Export session from PostHog (they use rrweb internally)
-// 2. Use the same importer
-
+// PostHog exports are rrweb events, so you can import them directly.
 async function importFromPostHogExport(filePath: string) {
   const file = await Bun.file(filePath).text();
   const data = JSON.parse(file);
@@ -146,12 +129,9 @@ async function importFromPostHogExport(filePath: string) {
   });
 }
 
-// ============================================================================
-// Example 6: Handle different event types
-// ============================================================================
+// --- Example 6: Handle different event types ---
 
 const comprehensiveEvents: RrwebEvent[] = [
-  // Meta event (page navigation)
   {
     type: RrwebEventType.Meta,
     timestamp: 1000,
@@ -161,7 +141,6 @@ const comprehensiveEvents: RrwebEvent[] = [
       height: 1080,
     },
   },
-  // Full snapshot (DOM tree)
   {
     type: RrwebEventType.FullSnapshot,
     timestamp: 1010,
@@ -193,7 +172,6 @@ const comprehensiveEvents: RrwebEvent[] = [
       },
     },
   },
-  // Input event
   {
     type: RrwebEventType.IncrementalSnapshot,
     timestamp: 2000,
@@ -203,7 +181,6 @@ const comprehensiveEvents: RrwebEvent[] = [
       text: 'user@example.com',
     },
   },
-  // Click event
   {
     type: RrwebEventType.IncrementalSnapshot,
     timestamp: 3000,
@@ -215,7 +192,6 @@ const comprehensiveEvents: RrwebEvent[] = [
       y: 300,
     },
   },
-  // Scroll event
   {
     type: RrwebEventType.IncrementalSnapshot,
     timestamp: 4000,
@@ -228,7 +204,6 @@ const comprehensiveEvents: RrwebEvent[] = [
       },
     },
   },
-  // Console error
   {
     type: RrwebEventType.IncrementalSnapshot,
     timestamp: 5000,
@@ -253,11 +228,8 @@ console.log('  Input events:', session6.events.filter((e) => e.type === 5).lengt
 console.log('  Scroll events:', session6.events.filter((e) => e.type === 4).length);
 console.log('  Error events:', session6.events.filter((e) => e.type === 9).length);
 
-// ============================================================================
-// Example 7: Export session for test generation
-// ============================================================================
+// --- Example 7: Export session for test generation ---
 
-// Once imported, you can use the session with Gremlin's test generators:
+// Once imported, use the session with Gremlin's test generators:
 // import { generatePlaywrightTest } from '@gremlin/core';
 // const testCode = generatePlaywrightTest(session1);
-// console.log(testCode);

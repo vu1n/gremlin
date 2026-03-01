@@ -1,9 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { GestureInterceptor, createGestureHandlers, type GestureEvent } from './gesture-interceptor';
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function mockEvent(pageX: number, pageY: number, target?: any) {
   return {
@@ -28,10 +24,6 @@ function collectGestures(config?: Partial<{ minSwipeDistance: number; longPressD
 function wait(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
-
-// ============================================================================
-// Tap Detection
-// ============================================================================
 
 describe('GestureInterceptor', () => {
   describe('tap detection', () => {
@@ -112,10 +104,6 @@ describe('GestureInterceptor', () => {
     });
   });
 
-  // ============================================================================
-  // Double Tap Detection
-  // ============================================================================
-
   describe('double tap detection', () => {
     it('emits only double_tap for two quick taps at same position', () => {
       const { interceptor, gestures } = collectGestures({ doubleTapDelay: 500 });
@@ -191,10 +179,6 @@ describe('GestureInterceptor', () => {
     });
   });
 
-  // ============================================================================
-  // Long Press Detection
-  // ============================================================================
-
   describe('long press detection', () => {
     it('emits long_press after longPressDuration elapses', async () => {
       const { interceptor, gestures } = collectGestures({ longPressDuration: 50 });
@@ -252,10 +236,6 @@ describe('GestureInterceptor', () => {
       expect(gestures).toHaveLength(0);
     });
   });
-
-  // ============================================================================
-  // Swipe Detection
-  // ============================================================================
 
   describe('swipe detection', () => {
     it('emits swipe when finger moves beyond minSwipeDistance', () => {
@@ -365,10 +345,6 @@ describe('GestureInterceptor', () => {
     });
   });
 
-  // ============================================================================
-  // Touch Move Handling
-  // ============================================================================
-
   describe('touch move', () => {
     it('does nothing if no touch start has occurred', () => {
       const { interceptor, gestures } = collectGestures();
@@ -377,10 +353,6 @@ describe('GestureInterceptor', () => {
       expect(gestures).toHaveLength(0);
     });
   });
-
-  // ============================================================================
-  // Touch End Edge Cases
-  // ============================================================================
 
   describe('touch end edge cases', () => {
     it('does nothing if no touch start has occurred', () => {
@@ -402,10 +374,6 @@ describe('GestureInterceptor', () => {
       expect(gestures).toHaveLength(1); // Only the first tap
     });
   });
-
-  // ============================================================================
-  // Cleanup
-  // ============================================================================
 
   describe('cleanup', () => {
     it('resets all state', async () => {
@@ -443,10 +411,6 @@ describe('GestureInterceptor', () => {
     });
   });
 
-  // ============================================================================
-  // createGestureHandlers
-  // ============================================================================
-
   describe('createGestureHandlers', () => {
     it('returns touch handler props bound to the interceptor', () => {
       const { interceptor, gestures } = collectGestures();
@@ -471,10 +435,6 @@ describe('GestureInterceptor', () => {
       expect(gestures[0].type).toBe('tap');
     });
   });
-
-  // ============================================================================
-  // Default Config
-  // ============================================================================
 
   describe('default config', () => {
     it('uses default minSwipeDistance of 30', () => {

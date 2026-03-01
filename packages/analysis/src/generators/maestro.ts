@@ -13,8 +13,8 @@ import type {
   ElementRef,
   Predicate,
   StateId,
-} from '../spec/types';
-import { extractFlows, getStateName, type Flow } from './flows';
+} from '../spec/types.ts';
+import { extractFlows, type Flow } from './flows.ts';
 
 // ============================================================================
 // Types

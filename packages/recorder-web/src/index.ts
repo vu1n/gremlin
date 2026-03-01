@@ -10,9 +10,15 @@
 export const VERSION = '0.0.1';
 
 // Recorder
-export { GremlinRecorder, type RecorderConfig } from './recorder';
-export { captureElement, findInteractiveElement } from './element-capture';
-export { WebPerformanceMonitor, type WebPerformanceMonitorConfig } from './performance-monitor';
+export { GremlinRecorder, type RecorderConfig } from './recorder.ts';
+export { captureElement, findInteractiveElement } from './element-capture.ts';
+export { WebPerformanceMonitor, type WebPerformanceMonitorConfig } from './performance-monitor.ts';
+export {
+  TransportCapability,
+  PerformanceCapability,
+  type TransportCapabilityConfig,
+  type PerformanceCapabilityConfig,
+} from './capabilities.ts';
 
 // Replayer
 export {
@@ -20,4 +26,4 @@ export {
   createReplayViewer,
   type ReplayerConfig,
   type RrwebSession,
-} from './replayer';
+} from './replayer.ts';

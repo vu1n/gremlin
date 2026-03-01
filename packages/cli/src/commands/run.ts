@@ -4,15 +4,15 @@
  * Detects whether Playwright or Maestro tests exist and runs the appropriate runner.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { output, outputError, type OutputOptions } from '../output.ts';
+import { output, exitWithError, type OutputOptions } from '../output.ts';
 import { readBaseline } from '../perf-baseline-types.ts';
 import type { PerfBaseline, MetricBudget } from '../perf-baseline-types.ts';
 
-export interface RunOptions extends OutputOptions {
+interface RunOptions extends OutputOptions {
   /** Specific test file or pattern to run */
   test?: string;
   /** Run all tests */
@@ -31,13 +31,13 @@ export interface RunOptions extends OutputOptions {
   device?: string;
 }
 
-export interface RunnerResult {
+interface RunnerResult {
   name: string;
   dir: string;
   exitCode: number;
 }
 
-export interface RunResult {
+interface RunResult {
   runners: RunnerResult[];
   passed: boolean;
 }
@@ -107,7 +107,7 @@ function sanitizePath(path: string): string {
 /**
  * Run Playwright tests
  */
-async function runPlaywright(options: RunOptions): Promise<number> {
+function runPlaywright(options: RunOptions): Promise<number> {
   const args = ['playwright', 'test'];
 
   if (options.test) {
@@ -161,7 +161,7 @@ async function runPlaywright(options: RunOptions): Promise<number> {
 /**
  * Run Maestro tests
  */
-async function runMaestro(options: RunOptions): Promise<number> {
+function runMaestro(options: RunOptions): Promise<number> {
   const maestroDir = join(options.testsDir, 'maestro');
   const args: string[] = [];
 
@@ -216,30 +216,13 @@ export async function run(options: RunOptions): Promise<RunResult> {
   const { testsDir, verbose, test, all } = options;
 
   if (!existsSync(testsDir)) {
-    const result: RunResult = { runners: [], passed: false };
-    if (outputError('run', [`Tests directory not found: ${testsDir}`], options)) {
-      process.exit(1);
-    }
-    console.error(`Tests directory not found: ${testsDir}`);
-    console.error(`\nGenerate tests first with:`);
-    console.error(`  gremlin generate`);
-    process.exit(1);
+    exitWithError('run', `Tests directory not found: ${testsDir}`, options);
   }
 
   const runners = await detectRunners(testsDir);
 
   if (runners.length === 0) {
-    const result: RunResult = { runners: [], passed: false };
-    if (outputError('run', [`No tests found in ${testsDir}`], options)) {
-      process.exit(1);
-    }
-    console.error(`No tests found in ${testsDir}`);
-    console.error(`\nExpected structure:`);
-    console.error(`  ${testsDir}/playwright/*.spec.ts`);
-    console.error(`  ${testsDir}/maestro/*.yaml`);
-    console.error(`\nGenerate tests with:`);
-    console.error(`  gremlin generate`);
-    process.exit(1);
+    exitWithError('run', `No tests found in ${testsDir}`, options);
   }
 
   if (!options.json) {
@@ -280,11 +263,7 @@ export async function run(options: RunOptions): Promise<RunResult> {
   return result;
 }
 
-// ============================================================================
-// Perf Test Runner
-// ============================================================================
-
-export interface RunPerfOptions extends OutputOptions {
+interface RunPerfOptions extends OutputOptions {
   verbose?: boolean;
   headed?: boolean;
 }
@@ -295,46 +274,15 @@ interface PerfFlowResult {
   metrics: Record<string, { actual: number | null; budget: number; passed: boolean }>;
 }
 
-export interface RunPerfResult {
+interface RunPerfResult {
   flows: PerfFlowResult[];
   allPassed: boolean;
 }
 
 /**
- * Run perf tests from `.gremlin/tests/perf/` and compare results against baseline.
+ * Build Playwright CLI args for perf tests.
  */
-export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
-  const perfDir = '.gremlin/tests/perf';
-  const json = options.json;
-
-  // Check perf tests exist
-  if (!existsSync(perfDir)) {
-    if (outputError('run', ['No perf tests found. Run `gremlin generate --perf` first.'], options)) {
-      process.exit(1);
-    }
-    console.error('No perf tests found in .gremlin/tests/perf/');
-    console.error('Run `gremlin generate --perf` first.');
-    process.exit(1);
-  }
-
-  // Check baseline exists
-  const baseline = readBaseline();
-  if (!baseline) {
-    if (outputError('run', ['No perf baseline found. Run `gremlin perf-baseline` first.'], options)) {
-      process.exit(1);
-    }
-    console.error('No perf baseline found.');
-    console.error('Run `gremlin perf-baseline` first.');
-    process.exit(1);
-  }
-
-  if (!json) {
-    console.log('Running performance tests...');
-    console.log(`  Dir: ${perfDir}`);
-    console.log('');
-  }
-
-  // Check for playwright config in perf dir
+function buildPerfArgs(perfDir: string, options: RunPerfOptions): string[] {
   const configPath = join(perfDir, 'playwright.perf.config.ts');
   const args = ['playwright', 'test', '--reporter=json'];
   if (existsSync(configPath)) {
@@ -343,14 +291,23 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
   if (options.headed) {
     args.push('--headed');
   }
+  return args;
+}
 
-  // Run Playwright tests
-  const testOutput = await new Promise<{ stdout: string; exitCode: number }>((resolve) => {
+/**
+ * Spawn Playwright and capture JSON output.
+ */
+function spawnPerfTests(
+  perfDir: string,
+  args: string[],
+  json?: boolean
+): Promise<{ stdout: string; exitCode: number }> {
+  return new Promise((resolve) => {
     let stdout = '';
     const proc = spawn('npx', args, {
       cwd: perfDir,
       stdio: ['pipe', 'pipe', json ? 'pipe' : 'inherit'],
-      shell: false, // Disable shell to prevent injection
+      shell: false,
     });
 
     proc.stdout?.on('data', (data: Buffer) => {
@@ -365,34 +322,44 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
       resolve({ stdout: '', exitCode: 1 });
     });
   });
+}
 
-  // Compare results against baseline
-  const flowResults: PerfFlowResult[] = [];
-
-  // Parse Playwright JSON output for test results
-  let playwrightResults: Record<string, boolean> = {};
+/**
+ * Parse Playwright JSON report into a pass/fail map keyed by suite title.
+ */
+function parsePlaywrightResults(stdout: string): Record<string, boolean> {
+  const results: Record<string, boolean> = {};
   try {
-    const report = JSON.parse(testOutput.stdout);
+    const report = JSON.parse(stdout);
     if (report.suites) {
       for (const suite of report.suites) {
         for (const spec of suite.specs ?? []) {
           const passed = spec.tests?.every((t: { status: string }) => t.status === 'expected') ?? false;
-          playwrightResults[suite.title ?? spec.title] = passed;
+          results[suite.title ?? spec.title] = passed;
         }
       }
     }
   } catch {
     // If we can't parse JSON output, use exit code
   }
+  return results;
+}
 
-  // Build per-flow results from baseline budgets
+/**
+ * Build per-flow perf results by matching baseline flows against Playwright results.
+ */
+function buildFlowResults(
+  baseline: PerfBaseline,
+  playwrightResults: Record<string, boolean>,
+  fallbackPassed: boolean
+): PerfFlowResult[] {
+  const flowResults: PerfFlowResult[] = [];
+
   for (const flow of baseline.flows) {
     const matchKey = `Performance: ${flow.name}`;
-    const testPassed = playwrightResults[matchKey] ?? (testOutput.exitCode === 0);
+    const testPassed = playwrightResults[matchKey] ?? fallbackPassed;
 
     const metrics: Record<string, { actual: number | null; budget: number; passed: boolean }> = {};
-
-    // We report budget thresholds from baseline (actual values come from Playwright)
     metrics['totalDuration'] = {
       actual: null,
       budget: flow.budgets.totalDuration.budget,
@@ -404,14 +371,19 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
       passed: testPassed,
     };
 
-    flowResults.push({
-      name: flow.name,
-      passed: testPassed,
-      metrics,
-    });
+    flowResults.push({ name: flow.name, passed: testPassed, metrics });
   }
 
-  // Add global Web Vitals budgets
+  return flowResults;
+}
+
+/**
+ * Build global Web Vitals flow result from baseline budgets.
+ */
+function buildGlobalVitalsResult(
+  baseline: PerfBaseline,
+  passed: boolean
+): PerfFlowResult | null {
   const globalMetrics: Record<string, { actual: number | null; budget: number; passed: boolean }> = {};
   const vitals: [string, MetricBudget][] = [
     ['lcp', baseline.global.lcp],
@@ -423,31 +395,18 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
 
   for (const [name, data] of vitals) {
     if (data.budget > 0) {
-      globalMetrics[name] = {
-        actual: null,
-        budget: data.budget,
-        passed: testOutput.exitCode === 0,
-      };
+      globalMetrics[name] = { actual: null, budget: data.budget, passed };
     }
   }
 
-  if (Object.keys(globalMetrics).length > 0) {
-    flowResults.unshift({
-      name: '__global__',
-      passed: testOutput.exitCode === 0,
-      metrics: globalMetrics,
-    });
-  }
+  if (Object.keys(globalMetrics).length === 0) return null;
+  return { name: '__global__', passed, metrics: globalMetrics };
+}
 
-  const allPassed = testOutput.exitCode === 0;
-  const result: RunPerfResult = { flows: flowResults, allPassed };
-
-  if (output('run', result, options)) {
-    if (!allPassed) process.exit(1);
-    return result;
-  }
-
-  // Human-readable output
+/**
+ * Print human-readable perf regression results.
+ */
+function printPerfResults(flowResults: PerfFlowResult[], allPassed: boolean): void {
   console.log('');
   console.log('Performance Regression Results');
   console.log('==============================');
@@ -472,6 +431,51 @@ export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
     console.log('Some performance budgets exceeded.');
     process.exit(1);
   }
+}
+
+/**
+ * Run perf tests from `.gremlin/tests/perf/` and compare results against baseline.
+ */
+export async function runPerf(options: RunPerfOptions): Promise<RunPerfResult> {
+  const perfDir = '.gremlin/tests/perf';
+  const json = options.json;
+
+  if (!existsSync(perfDir)) {
+    exitWithError('run', 'No perf tests found. Run `gremlin generate --perf` first.', options);
+  }
+
+  const baseline = readBaseline();
+  if (!baseline) {
+    exitWithError('run', 'No perf baseline found. Run `gremlin perf-baseline` first.', options);
+  }
+
+  if (!json) {
+    console.log('Running performance tests...');
+    console.log(`  Dir: ${perfDir}`);
+    console.log('');
+  }
+
+  const args = buildPerfArgs(perfDir, options);
+  const testOutput = await spawnPerfTests(perfDir, args, json);
+
+  const playwrightResults = parsePlaywrightResults(testOutput.stdout);
+  const allPassed = testOutput.exitCode === 0;
+
+  const flowResults = buildFlowResults(baseline, playwrightResults, allPassed);
+
+  const globalResult = buildGlobalVitalsResult(baseline, allPassed);
+  if (globalResult) {
+    flowResults.unshift(globalResult);
+  }
+
+  const result: RunPerfResult = { flows: flowResults, allPassed };
+
+  if (output('run', result, options)) {
+    if (!allPassed) process.exit(1);
+    return result;
+  }
+
+  printPerfResults(flowResults, allPassed);
 
   return result;
 }

@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ProductCard } from '../components/ProductCard';
